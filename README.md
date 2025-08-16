@@ -71,10 +71,34 @@ logging:
 
 ## API Endpoints
 
+### Core Endpoints
+
 - `GET /health` - Health check
 - `GET /metrics` - Prometheus metrics
 - `GET /status` - WebSocket connection status
 - `GET /api/ticker/:exchange/:symbol` - Get latest ticker
+  - Symbol format: `{base}-{quote}` (e.g., `btc-usdt`, `eth-usdt`)
+  - Auto-subscribes to new symbols (2-second delay for first request)
+- `POST /api/subscribe` - Subscribe to a symbol
+  - Body: `{"exchange": "binance", "symbol": "BTCUSDT"}`
+- `POST /api/unsubscribe` - Unsubscribe from a symbol
+  - Body: `{"exchange": "binance", "symbol": "BTCUSDT"}`
+
+### Symbol Format
+
+The ticker API uses a standardized format: `{base}-{quote}`
+
+Examples:
+- `btc-usdt` - Bitcoin against USDT
+- `eth-usdt` - Ethereum against USDT
+- `bnb-usdt` - Binance Coin against USDT
+
+Currently supported quote currencies:
+- `usdt` - Tether USD
+
+Future support planned for:
+- `usdc` - USD Coin
+- `busd` - Binance USD
 
 ## Performance
 

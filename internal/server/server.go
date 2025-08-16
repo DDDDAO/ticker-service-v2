@@ -99,29 +99,15 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 	exchange := path[:firstSlash]
 	symbol := path[firstSlash+1:]
 	
-	// Replace common separators with /
+	// Validate format: should be symbol-quote (e.g., btc-usdt)
+	if !strings.Contains(symbol, "-") {
+		http.Error(w, "Invalid symbol format. Use symbol-quote format (e.g., btc-usdt)", http.StatusBadRequest)
+		return
+	}
+	
+	// Convert to internal format: btc-usdt -> BTC/USDT
 	symbol = strings.ReplaceAll(symbol, "-", "/")
 	symbol = strings.ToUpper(symbol)
-	
-	// Check if symbol has quote currency
-	if !strings.Contains(symbol, "/") {
-		// Check if it ends with a known quote currency (at least 3 chars for the quote)
-		hasQuote := false
-		for _, quote := range []string{"USDT", "BUSD", "BTC", "ETH", "BNB", "USDC", "TUSD"} {
-			if strings.HasSuffix(symbol, quote) && len(symbol) > len(quote) {
-				// Insert the "/" before the quote currency
-				baseLen := len(symbol) - len(quote)
-				symbol = symbol[:baseLen] + "/" + symbol[baseLen:]
-				hasQuote = true
-				break
-			}
-		}
-		
-		// If no quote currency found, assume USDT
-		if !hasQuote {
-			symbol = symbol + "/USDT"
-		}
-	}
 
 	// Get latest ticker from Redis
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
