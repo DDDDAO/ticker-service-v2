@@ -292,6 +292,21 @@ func (h *OKXHandler) keepAlive() {
 	}
 }
 
+// Subscribe adds a new symbol (not implemented for OKX - requires reconnection)
+func (h *OKXHandler) Subscribe(symbol string) {
+	logger.WithSymbol("okx", symbol).Warn("Dynamic subscription not supported - requires reconnection")
+}
+
+// Unsubscribe removes a symbol (not implemented for OKX - requires reconnection)
+func (h *OKXHandler) Unsubscribe(symbol string) {
+	logger.WithSymbol("okx", symbol).Warn("Dynamic unsubscription not supported - requires reconnection")
+}
+
+// GetSubscribedSymbols returns list of subscribed symbols
+func (h *OKXHandler) GetSubscribedSymbols() []string {
+	return h.config.Symbols
+}
+
 // normalizeOKXSymbol converts OKX symbol format to standard format
 func normalizeOKXSymbol(symbol string) string {
 	// Convert BTC-USDT to BTC/USDT

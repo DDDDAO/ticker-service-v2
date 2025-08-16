@@ -306,6 +306,21 @@ func (h *BitgetHandler) keepAlive() {
 	}
 }
 
+// Subscribe adds a new symbol (not implemented for Bitget - requires reconnection)
+func (h *BitgetHandler) Subscribe(symbol string) {
+	logger.WithSymbol("bitget", symbol).Warn("Dynamic subscription not supported - requires reconnection")
+}
+
+// Unsubscribe removes a symbol (not implemented for Bitget - requires reconnection)
+func (h *BitgetHandler) Unsubscribe(symbol string) {
+	logger.WithSymbol("bitget", symbol).Warn("Dynamic unsubscription not supported - requires reconnection")
+}
+
+// GetSubscribedSymbols returns list of subscribed symbols
+func (h *BitgetHandler) GetSubscribedSymbols() []string {
+	return h.config.Symbols
+}
+
 // normalizeBitgetSymbol converts Bitget symbol format to standard format
 func normalizeBitgetSymbol(symbol string) string {
 	// BTCUSDT -> BTC/USDT

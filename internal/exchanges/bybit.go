@@ -343,6 +343,21 @@ func (h *BybitHandler) keepAlive() {
 	}
 }
 
+// Subscribe adds a new symbol (not implemented for Bybit - requires reconnection)
+func (h *BybitHandler) Subscribe(symbol string) {
+	logger.WithSymbol("bybit", symbol).Warn("Dynamic subscription not supported - requires reconnection")
+}
+
+// Unsubscribe removes a symbol (not implemented for Bybit - requires reconnection)
+func (h *BybitHandler) Unsubscribe(symbol string) {
+	logger.WithSymbol("bybit", symbol).Warn("Dynamic unsubscription not supported - requires reconnection")
+}
+
+// GetSubscribedSymbols returns list of subscribed symbols
+func (h *BybitHandler) GetSubscribedSymbols() []string {
+	return h.config.Symbols
+}
+
 // normalizeBybitSymbol converts Bybit symbol format to standard format
 func normalizeBybitSymbol(symbol string) string {
 	// BTCUSDT -> BTC/USDT

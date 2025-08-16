@@ -24,10 +24,25 @@ type BinanceHandler struct {
 	messageCount   int64
 	errorCount     int64
 	reconnectCount int64
+	subscribedSymbols map[string]bool // Track which symbols we want to receive
+	symbolsMu         sync.RWMutex
 }
 
-// BinanceTickerMessage represents Binance 24hr ticker WebSocket message
-// Based on Binance WebSocket documentation for 24hrTicker stream
+// BinanceMiniTickerMessage represents Binance mini ticker WebSocket message
+// Using !miniTicker@arr stream for all symbols at once
+type BinanceMiniTickerMessage struct {
+	EventType string      `json:"e"` // Event type (24hrMiniTicker)
+	EventTime int64       `json:"E"` // Event time
+	Symbol    string      `json:"s"` // Symbol
+	LastPrice interface{} `json:"c"` // Close price (last price)
+	OpenPrice interface{} `json:"o"` // Open price
+	High      interface{} `json:"h"` // High price
+	Low       interface{} `json:"l"` // Low price
+	Volume    interface{} `json:"v"` // Total traded base asset volume
+	QuoteVol  interface{} `json:"q"` // Total traded quote asset volume
+}
+
+// BinanceTickerMessage represents old format for compatibility
 type BinanceTickerMessage struct {
 	EventType          string      `json:"e"` // Event type
 	EventTime          int64       `json:"E"` // Event time
@@ -56,8 +71,20 @@ type BinanceTickerMessage struct {
 
 // NewBinanceHandler creates a new Binance WebSocket handler
 func NewBinanceHandler(cfg config.ExchangeConfig) *BinanceHandler {
+	// Convert symbol list to a map for faster lookups
+	subscribed := make(map[string]bool)
+	for _, symbol := range cfg.Symbols {
+		// Convert format: "btcusdt@ticker" -> "BTCUSDT"
+		if idx := strings.Index(symbol, "@"); idx > 0 {
+			subscribed[strings.ToUpper(symbol[:idx])] = true
+		} else {
+			subscribed[strings.ToUpper(symbol)] = true
+		}
+	}
+	
 	return &BinanceHandler{
-		config: cfg,
+		config:            cfg,
+		subscribedSymbols: subscribed,
 		status: ExchangeStatus{
 			Symbols: cfg.Symbols,
 		},
@@ -66,9 +93,8 @@ func NewBinanceHandler(cfg config.ExchangeConfig) *BinanceHandler {
 
 // Connect establishes WebSocket connection to Binance
 func (h *BinanceHandler) Connect() error {
-	// Build stream URL with all symbols
-	streams := strings.Join(h.config.Symbols, "/")
-	url := fmt.Sprintf("%s/stream?streams=%s", h.config.WSURL, streams)
+	// Use !miniTicker@arr stream for all symbols
+	url := fmt.Sprintf("%s/ws/!miniTicker@arr", h.config.WSURL)
 
 	log := logger.WithExchange("binance")
 	log.Infof("Connecting to %s", url)
@@ -153,14 +179,10 @@ func (h *BinanceHandler) HandleMessages(ctx context.Context) error {
 
 // processMessage processes a single WebSocket message
 func (h *BinanceHandler) processMessage(data []byte) error {
-	// Binance sends messages wrapped in a stream structure
-	var wrapper struct {
-		Stream string          `json:"stream"`
-		Data   json.RawMessage `json:"data"`
-	}
-
-	if err := json.Unmarshal(data, &wrapper); err != nil {
-		// Try direct parsing if not wrapped
+	// !miniTicker@arr sends an array of mini tickers
+	var tickers []BinanceMiniTickerMessage
+	if err := json.Unmarshal(data, &tickers); err != nil {
+		// Try parsing as single message for backward compatibility
 		var msg BinanceTickerMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return fmt.Errorf("failed to parse message: %w", err)
@@ -168,18 +190,61 @@ func (h *BinanceHandler) processMessage(data []byte) error {
 		return h.processTicker(&msg)
 	}
 
-	// Parse the actual ticker data
-	var msg BinanceTickerMessage
-	if err := json.Unmarshal(wrapper.Data, &msg); err != nil {
-		return fmt.Errorf("failed to parse ticker data: %w", err)
+	// Process each ticker in the array
+	processedCount := 0
+	for _, ticker := range tickers {
+		// Only process symbols we're interested in
+		h.symbolsMu.RLock()
+		_, shouldProcess := h.subscribedSymbols[ticker.Symbol]
+		h.symbolsMu.RUnlock()
+		
+		if shouldProcess {
+			if err := h.processMiniTicker(&ticker); err != nil {
+				logger.WithSymbol("binance", ticker.Symbol).Errorf("Failed to process ticker: %v", err)
+			}
+			processedCount++
+		}
+	}
+	
+	if logger.ShouldLogTickerUpdates() {
+		logger.WithExchange("binance").Debugf("Processed %d/%d tickers", processedCount, len(tickers))
 	}
 
-	return h.processTicker(&msg)
+	return nil
 }
 
-// processTicker processes a ticker message
-func (h *BinanceHandler) processTicker(msg *BinanceTickerMessage) error {
+// processMiniTicker processes a mini ticker message
+func (h *BinanceHandler) processMiniTicker(msg *BinanceMiniTickerMessage) error {
+	if msg.EventType != "24hrMiniTicker" && msg.EventType != "" {
+		return nil // Skip non-ticker messages
+	}
 
+	// Convert to normalized ticker data
+	ticker := &TickerData{
+		Symbol:    normalizeBinanceSymbol(msg.Symbol),
+		Timestamp: time.Unix(0, msg.EventTime*int64(time.Millisecond)),
+	}
+
+	// Parse prices using helper function
+	ticker.Last = parseFloat(msg.LastPrice)
+	ticker.High = parseFloat(msg.High)
+	ticker.Low = parseFloat(msg.Low)
+	ticker.Volume = parseFloat(msg.Volume)
+	
+	// Mini ticker doesn't have bid/ask, set to 0
+	ticker.Bid = 0
+	ticker.Ask = 0
+
+	// Call callback if set
+	if h.callback != nil {
+		h.callback(ticker)
+	}
+
+	return nil
+}
+
+// processTicker processes a full ticker message (backward compatibility)
+func (h *BinanceHandler) processTicker(msg *BinanceTickerMessage) error {
 	if msg.EventType != "24hrTicker" && msg.EventType != "" {
 		return nil // Skip non-ticker messages
 	}
@@ -211,6 +276,42 @@ func (h *BinanceHandler) OnMessage(callback func(*TickerData)) {
 	h.callback = callback
 }
 
+// Subscribe adds a new symbol to track
+func (h *BinanceHandler) Subscribe(symbol string) {
+	h.symbolsMu.Lock()
+	defer h.symbolsMu.Unlock()
+	
+	// Normalize symbol to uppercase
+	normalizedSymbol := strings.ToUpper(symbol)
+	h.subscribedSymbols[normalizedSymbol] = true
+	
+	logger.WithSymbol("binance", symbol).Info("Subscribed to symbol")
+}
+
+// Unsubscribe removes a symbol from tracking
+func (h *BinanceHandler) Unsubscribe(symbol string) {
+	h.symbolsMu.Lock()
+	defer h.symbolsMu.Unlock()
+	
+	// Normalize symbol to uppercase
+	normalizedSymbol := strings.ToUpper(symbol)
+	delete(h.subscribedSymbols, normalizedSymbol)
+	
+	logger.WithSymbol("binance", symbol).Info("Unsubscribed from symbol")
+}
+
+// GetSubscribedSymbols returns list of subscribed symbols
+func (h *BinanceHandler) GetSubscribedSymbols() []string {
+	h.symbolsMu.RLock()
+	defer h.symbolsMu.RUnlock()
+	
+	symbols := make([]string, 0, len(h.subscribedSymbols))
+	for symbol := range h.subscribedSymbols {
+		symbols = append(symbols, symbol)
+	}
+	return symbols
+}
+
 // GetStatus returns the current status
 func (h *BinanceHandler) GetStatus() ExchangeStatus {
 	h.mu.RLock()
@@ -220,7 +321,20 @@ func (h *BinanceHandler) GetStatus() ExchangeStatus {
 	status.MessageCount = atomic.LoadInt64(&h.messageCount)
 	status.ErrorCount = atomic.LoadInt64(&h.errorCount)
 	status.ReconnectCount = atomic.LoadInt64(&h.reconnectCount)
+	
+	// Update symbols list with current subscriptions
+	status.Symbols = h.GetSubscribedSymbols()
+	
 	return status
+}
+
+// normalizeBinanceSymbol converts Binance symbol format to standard format
+func normalizeBinanceSymbol(symbol string) string {
+	// BTCUSDT -> BTC/USDT
+	if len(symbol) > 4 && symbol[len(symbol)-4:] == "USDT" {
+		return symbol[:len(symbol)-4] + "/USDT"
+	}
+	return symbol
 }
 
 // keepAlive sends periodic pings to keep the connection alive

@@ -106,7 +106,11 @@ func (m *Manager) publishTicker(exchange string, data *TickerData) {
 	ctx := context.Background()
 	channel := fmt.Sprintf("ticker:%s:%s", exchange, data.Symbol)
 	
+	// Calculate processing latency
+	processingLatency := time.Since(data.Timestamp).Milliseconds()
+	
 	// Publish to Redis channel
+	publishStart := time.Now()
 	if err := m.redis.Publish(ctx, channel, data.ToJSON()).Err(); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"exchange": exchange,
@@ -115,8 +119,10 @@ func (m *Manager) publishTicker(exchange string, data *TickerData) {
 		}).Errorf("Failed to publish ticker: %v", err)
 		return
 	}
+	publishLatency := time.Since(publishStart).Milliseconds()
 
 	// Also store latest ticker in Redis with TTL
+	storeStart := time.Now()
 	key := fmt.Sprintf("ticker:latest:%s:%s", exchange, data.Symbol)
 	if err := m.redis.Set(ctx, key, data.ToJSON(), 30*time.Second).Err(); err != nil {
 		logrus.WithFields(logrus.Fields{
@@ -125,18 +131,29 @@ func (m *Manager) publishTicker(exchange string, data *TickerData) {
 			"app":      "ticker-service-v2",
 		}).Errorf("Failed to store ticker: %v", err)
 	}
+	storeLatency := time.Since(storeStart).Milliseconds()
 
-	// Only log ticker updates if enabled
-	if logger.ShouldLogTickerUpdates() {
-		// Log with latency info
-		latency := time.Since(data.Timestamp).Milliseconds()
+	// Always log performance metrics at warn level if they're concerning
+	if processingLatency > 100 || publishLatency > 50 || storeLatency > 50 {
 		logrus.WithFields(logrus.Fields{
-			"exchange": exchange,
-			"symbol":   data.Symbol,
-			"price":    data.Last,
-			"volume":   data.Volume,
-			"latency":  latency,
-			"app":      "ticker-service-v2",
+			"exchange":              exchange,
+			"symbol":                data.Symbol,
+			"processing_latency_ms": processingLatency,
+			"publish_latency_ms":    publishLatency,
+			"store_latency_ms":      storeLatency,
+			"app":                   "ticker-service-v2",
+		}).Warn("High latency detected")
+	} else if logger.ShouldLogTickerUpdates() {
+		// Only log ticker updates if enabled
+		logrus.WithFields(logrus.Fields{
+			"exchange":              exchange,
+			"symbol":                data.Symbol,
+			"price":                 data.Last,
+			"volume":                data.Volume,
+			"processing_latency_ms": processingLatency,
+			"publish_latency_ms":    publishLatency,
+			"store_latency_ms":      storeLatency,
+			"app":                   "ticker-service-v2",
 		}).Debug("Ticker received")
 	}
 }
@@ -151,6 +168,34 @@ func (m *Manager) GetStatus() map[string]ExchangeStatus {
 		status[name] = handler.GetStatus()
 	}
 	return status
+}
+
+// Subscribe subscribes to a symbol on an exchange
+func (m *Manager) Subscribe(exchange, symbol string) error {
+	m.mu.RLock()
+	handler, exists := m.exchanges[exchange]
+	m.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("exchange %s not found", exchange)
+	}
+	
+	handler.Subscribe(symbol)
+	return nil
+}
+
+// Unsubscribe unsubscribes from a symbol on an exchange
+func (m *Manager) Unsubscribe(exchange, symbol string) error {
+	m.mu.RLock()
+	handler, exists := m.exchanges[exchange]
+	m.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("exchange %s not found", exchange)
+	}
+	
+	handler.Unsubscribe(symbol)
+	return nil
 }
 
 // Wait waits for all exchange handlers to finish

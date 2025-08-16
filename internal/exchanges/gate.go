@@ -293,6 +293,21 @@ func (h *GateHandler) keepAlive() {
 	}
 }
 
+// Subscribe adds a new symbol (not implemented for Gate - requires reconnection)
+func (h *GateHandler) Subscribe(symbol string) {
+	logger.WithSymbol("gate", symbol).Warn("Dynamic subscription not supported - requires reconnection")
+}
+
+// Unsubscribe removes a symbol (not implemented for Gate - requires reconnection)
+func (h *GateHandler) Unsubscribe(symbol string) {
+	logger.WithSymbol("gate", symbol).Warn("Dynamic unsubscription not supported - requires reconnection")
+}
+
+// GetSubscribedSymbols returns list of subscribed symbols
+func (h *GateHandler) GetSubscribedSymbols() []string {
+	return h.config.Symbols
+}
+
 // normalizeGateSymbol converts Gate.io symbol format to standard format
 func normalizeGateSymbol(symbol string) string {
 	// BTC_USDT -> BTC/USDT

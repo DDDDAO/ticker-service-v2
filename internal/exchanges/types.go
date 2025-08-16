@@ -41,4 +41,7 @@ type Handler interface {
 	HandleMessages(ctx context.Context) error
 	OnMessage(callback func(*TickerData))
 	GetStatus() ExchangeStatus
+	Subscribe(symbol string)
+	Unsubscribe(symbol string)
+	GetSubscribedSymbols() []string
 }

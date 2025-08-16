@@ -38,6 +38,8 @@ func New(cfg config.ServerConfig, manager *exchanges.Manager, redisClient *redis
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/api/ticker/", s.handleTicker)
+	mux.HandleFunc("/api/subscribe", s.handleSubscribe)
+	mux.HandleFunc("/api/unsubscribe", s.handleUnsubscribe)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 
 	return s
@@ -173,4 +175,86 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	w.Write([]byte(strings.Join(metrics, "\n")))
+}
+
+// handleSubscribe handles subscription requests
+func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	// Parse request body
+	var req struct {
+		Exchange string `json:"exchange"`
+		Symbol   string `json:"symbol"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	// Validate inputs
+	if req.Exchange == "" || req.Symbol == "" {
+		http.Error(w, "Exchange and symbol are required", http.StatusBadRequest)
+		return
+	}
+	
+	// Subscribe
+	if err := s.manager.Subscribe(req.Exchange, req.Symbol); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	
+	response := map[string]interface{}{
+		"status":   "subscribed",
+		"exchange": req.Exchange,
+		"symbol":   req.Symbol,
+		"time":     time.Now().UTC(),
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleUnsubscribe handles unsubscription requests
+func (s *Server) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	// Parse request body
+	var req struct {
+		Exchange string `json:"exchange"`
+		Symbol   string `json:"symbol"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	// Validate inputs
+	if req.Exchange == "" || req.Symbol == "" {
+		http.Error(w, "Exchange and symbol are required", http.StatusBadRequest)
+		return
+	}
+	
+	// Unsubscribe
+	if err := s.manager.Unsubscribe(req.Exchange, req.Symbol); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	
+	response := map[string]interface{}{
+		"status":   "unsubscribed",
+		"exchange": req.Exchange,
+		"symbol":   req.Symbol,
+		"time":     time.Now().UTC(),
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
