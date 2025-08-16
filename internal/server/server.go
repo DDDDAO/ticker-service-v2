@@ -102,6 +102,26 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 	// Replace common separators with /
 	symbol = strings.ReplaceAll(symbol, "-", "/")
 	symbol = strings.ToUpper(symbol)
+	
+	// Check if symbol has quote currency
+	if !strings.Contains(symbol, "/") {
+		// Check if it ends with a known quote currency (at least 3 chars for the quote)
+		hasQuote := false
+		for _, quote := range []string{"USDT", "BUSD", "BTC", "ETH", "BNB", "USDC", "TUSD"} {
+			if strings.HasSuffix(symbol, quote) && len(symbol) > len(quote) {
+				// Insert the "/" before the quote currency
+				baseLen := len(symbol) - len(quote)
+				symbol = symbol[:baseLen] + "/" + symbol[baseLen:]
+				hasQuote = true
+				break
+			}
+		}
+		
+		// If no quote currency found, assume USDT
+		if !hasQuote {
+			symbol = symbol + "/USDT"
+		}
+	}
 
 	// Get latest ticker from Redis
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -111,7 +131,24 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 	data, err := s.redis.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			http.Error(w, "Ticker not found", http.StatusNotFound)
+			// Try to auto-subscribe to the symbol
+			// For Binance, convert symbol format to exchange format (BTC/USDT -> BTCUSDT)
+			exchangeSymbol := strings.ReplaceAll(symbol, "/", "")
+			
+			// Subscribe to the symbol
+			if subscribeErr := s.manager.Subscribe(exchange, exchangeSymbol); subscribeErr == nil {
+				// Wait a moment for data to arrive
+				time.Sleep(2 * time.Second)
+				
+				// Try to get the data again
+				data, err = s.redis.Get(ctx, key).Result()
+				if err == nil {
+					// Success! Continue to return the data
+					goto returnData
+				}
+			}
+			
+			http.Error(w, "Ticker not found. Try again in a few seconds if this is a valid symbol.", http.StatusNotFound)
 		} else {
 			logrus.WithFields(logrus.Fields{
 				"exchange": exchange,
@@ -123,6 +160,8 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	
+returnData:
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(data))
