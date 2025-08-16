@@ -30,6 +30,13 @@ exchanges:
       - BTC-USDT
       - ETH-USDT
       - SOL-USDT
+      - BNB-USDT
+      - PEPE-USDT
+      - DOGE-USDT
+      - SHIB-USDT
+      - MATIC-USDT
+      - AVAX-USDT
+      - LINK-USDT
 
   bybit:
     enabled: true
@@ -38,6 +45,10 @@ exchanges:
       - BTCUSDT
       - ETHUSDT
       - SOLUSDT
+      - BNBUSDT
+      - DOGEUSDT
+      - SHIBUSDT
+      - PEPEUSDT
 
   bitget:
     enabled: true
@@ -45,6 +56,9 @@ exchanges:
     symbols:
       - BTCUSDT
       - ETHUSDT
+      - SOLUSDT
+      - BNBUSDT
+      - DOGEUSDT
 
   gate:
     enabled: true
@@ -52,3 +66,6 @@ exchanges:
     symbols:
       - BTC_USDT
       - ETH_USDT
+      - SOL_USDT
+      - BNB_USDT
+      - DOGE_USDT

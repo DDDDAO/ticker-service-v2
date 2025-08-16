@@ -123,18 +123,25 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 			
 			// Subscribe to the symbol
 			if subscribeErr := s.manager.Subscribe(exchange, exchangeSymbol); subscribeErr == nil {
-				// Wait a moment for data to arrive
-				time.Sleep(2 * time.Second)
-				
-				// Try to get the data again
-				data, err = s.redis.Get(ctx, key).Result()
-				if err == nil {
-					// Success! Continue to return the data
-					goto returnData
+				// Wait a moment for data to arrive (only for Binance which supports dynamic subscription)
+				if exchange == "binance" {
+					time.Sleep(2 * time.Second)
+					
+					// Try to get the data again
+					data, err = s.redis.Get(ctx, key).Result()
+					if err == nil {
+						// Success! Continue to return the data
+						goto returnData
+					}
 				}
 			}
 			
-			http.Error(w, "Ticker not found. Try again in a few seconds if this is a valid symbol.", http.StatusNotFound)
+			// Different error messages based on exchange capabilities
+			if exchange == "binance" {
+				http.Error(w, "Ticker not found. Try again in a few seconds if this is a valid symbol.", http.StatusNotFound)
+			} else {
+				http.Error(w, fmt.Sprintf("Symbol not available on %s. This exchange requires pre-configuration of symbols.", exchange), http.StatusNotFound)
+			}
 		} else {
 			logrus.WithFields(logrus.Fields{
 				"exchange": exchange,
