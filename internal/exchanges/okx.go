@@ -218,16 +218,8 @@ func (h *OKXHandler) processTicker(data *struct {
 	VolCcy24h string `json:"volCcy24h"`
 	Timestamp string `json:"ts"`
 }, instID string) error {
-	// Parse timestamp
-	var timestamp time.Time
-	if ts, err := time.Parse(time.RFC3339, data.Timestamp); err == nil {
-		timestamp = ts
-	} else {
-		// Try parsing as milliseconds
-		var tsMs int64
-		fmt.Sscanf(data.Timestamp, "%d", &tsMs)
-		timestamp = time.Unix(0, tsMs*int64(time.Millisecond))
-	}
+	// Use current time as timestamp since exchanges send cached/delayed data
+	timestamp := time.Now()
 
 	// Convert to normalized ticker data
 	ticker := &TickerData{

@@ -220,9 +220,10 @@ func (h *BinanceHandler) processMiniTicker(msg *BinanceMiniTickerMessage) error 
 	}
 
 	// Convert to normalized ticker data
+	// Use current time as timestamp since Binance sends 1-second interval updates
 	ticker := &TickerData{
 		Symbol:    normalizeBinanceSymbol(msg.Symbol),
-		Timestamp: time.Unix(0, msg.EventTime*int64(time.Millisecond)),
+		Timestamp: time.Now(), // Use receive time instead of event time
 	}
 
 	// Parse prices using helper function
@@ -250,9 +251,10 @@ func (h *BinanceHandler) processTicker(msg *BinanceTickerMessage) error {
 	}
 
 	// Convert to normalized ticker data
+	// Use current time as timestamp since exchanges send cached/delayed data
 	ticker := &TickerData{
 		Symbol:    normalizeSymbol(msg.Symbol),
-		Timestamp: time.Unix(0, msg.EventTime*int64(time.Millisecond)),
+		Timestamp: time.Now(), // Use receive time instead of event time
 	}
 
 	// Parse prices - handle both string and number formats

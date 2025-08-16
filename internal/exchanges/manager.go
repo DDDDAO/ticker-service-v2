@@ -133,8 +133,9 @@ func (m *Manager) publishTicker(exchange string, data *TickerData) {
 	}
 	storeLatency := time.Since(storeStart).Milliseconds()
 
-	// Always log performance metrics at warn level if they're concerning
-	if processingLatency > 100 || publishLatency > 50 || storeLatency > 50 {
+	// Log performance metrics at warn level only for actual high latency
+	// Processing latency < 50ms is expected since we use receive time
+	if processingLatency > 50 || publishLatency > 20 || storeLatency > 20 {
 		logrus.WithFields(logrus.Fields{
 			"exchange":              exchange,
 			"symbol":                data.Symbol,

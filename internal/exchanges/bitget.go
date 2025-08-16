@@ -235,13 +235,8 @@ func (h *BitgetHandler) processTicker(data *struct {
 	ChangeUtc24h string `json:"changeUtc24h"`
 	Timestamp    string `json:"ts"`
 }) error {
-	// Parse timestamp
-	var timestamp time.Time
-	if ts, err := strconv.ParseInt(data.Timestamp, 10, 64); err == nil {
-		timestamp = time.Unix(0, ts*int64(time.Millisecond))
-	} else {
-		timestamp = time.Now()
-	}
+	// Use current time as timestamp since exchanges send cached/delayed data
+	timestamp := time.Now()
 
 	// Convert to normalized ticker data
 	ticker := &TickerData{

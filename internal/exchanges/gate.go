@@ -229,7 +229,7 @@ func (h *GateHandler) processTicker(msg *GateTickerMessage) error {
 	// Convert to normalized ticker data
 	ticker := &TickerData{
 		Symbol:    normalizeGateSymbol(msg.Result.CurrencyPair),
-		Timestamp: time.Unix(msg.Time, msg.TimeMs*int64(time.Millisecond)),
+		Timestamp: time.Now(), // Use receive time instead of exchange timestamp
 	}
 
 	// Parse prices

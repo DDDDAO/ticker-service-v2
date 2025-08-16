@@ -264,8 +264,8 @@ func (h *BybitHandler) processTickerData(data *BybitTickerData, ts int64) error 
 		h.tickerCache[symbol] = cachedTicker
 	}
 	
-	// Update timestamp
-	cachedTicker.Timestamp = time.Unix(0, ts*int64(time.Millisecond))
+	// Use current time as timestamp since exchanges send cached/delayed data
+	cachedTicker.Timestamp = time.Now()
 	
 	// Merge new data with cached data (only update non-empty fields)
 	if data.LastPrice != "" {
