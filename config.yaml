@@ -1,0 +1,54 @@
+server:
+  port: 8080
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+
+logging:
+  level: info
+  format: json
+  production: false  # Set to true to only show errors/warnings
+  ticker_updates: false  # Set to false to disable verbose ticker update logs
+
+exchanges:
+  binance:
+    enabled: true
+    ws_url: wss://stream.binance.com:9443
+    symbols:
+      - btcusdt@ticker
+      - ethusdt@ticker
+      - bnbusdt@ticker
+      - solusdt@ticker
+      - adausdt@ticker
+
+  okx:
+    enabled: true
+    ws_url: wss://ws.okx.com:8443/ws/v5/public
+    symbols:
+      - BTC-USDT
+      - ETH-USDT
+      - SOL-USDT
+
+  bybit:
+    enabled: true
+    ws_url: wss://stream.bybit.com/v5/public/linear
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+
+  bitget:
+    enabled: true
+    ws_url: wss://ws.bitget.com/v2/ws/public
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+
+  gate:
+    enabled: true
+    ws_url: wss://api.gateio.ws/ws/v4/
+    symbols:
+      - BTC_USDT
+      - ETH_USDT
