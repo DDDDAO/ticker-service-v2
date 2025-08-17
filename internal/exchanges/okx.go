@@ -24,6 +24,7 @@ type OKXHandler struct {
 	messageCount   int64
 	errorCount     int64
 	reconnectCount int64
+	symbolConverter *SymbolConverter
 }
 
 // OKXTickerMessage represents OKX ticker WebSocket message
@@ -57,6 +58,7 @@ func NewOKXHandler(cfg config.ExchangeConfig) *OKXHandler {
 		status: ExchangeStatus{
 			Symbols: cfg.Symbols,
 		},
+		symbolConverter: NewSymbolConverter(),
 	}
 }
 
@@ -94,9 +96,14 @@ func (h *OKXHandler) Connect() error {
 func (h *OKXHandler) subscribe() error {
 	args := make([]map[string]string, 0, len(h.config.Symbols))
 	for _, symbol := range h.config.Symbols {
+		// Convert symbol format: btc-usdt -> BTC-USDT-SWAP for futures
+		wsSymbol := h.symbolConverter.ConfigToWebSocket("okx", symbol)
+		// For futures/perpetual, add -SWAP suffix
+		wsSymbol = strings.Replace(wsSymbol, "-USDT", "-USDT-SWAP", 1)
+		
 		args = append(args, map[string]string{
 			"channel": "tickers",
-			"instId":  symbol,
+			"instId":  wsSymbol,
 		})
 	}
 
@@ -222,8 +229,10 @@ func (h *OKXHandler) processTicker(data *struct {
 	timestamp := time.Now()
 
 	// Convert to normalized ticker data
+	// Remove -SWAP suffix and convert to storage format
+	symbol := strings.Replace(instID, "-SWAP", "", 1)
 	ticker := &TickerData{
-		Symbol:    normalizeOKXSymbol(instID),
+		Symbol:    h.symbolConverter.WebSocketToStorage("okx", symbol),
 		Timestamp: timestamp,
 	}
 

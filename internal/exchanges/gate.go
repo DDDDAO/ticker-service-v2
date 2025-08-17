@@ -26,25 +26,29 @@ type GateHandler struct {
 	errorCount     int64
 	reconnectCount int64
 	requestID      int64
+	symbolConverter *SymbolConverter
+}
+
+// GateTickerData represents a single ticker object
+type GateTickerData struct {
+	CurrencyPair     string `json:"currency_pair"`
+	Last             string `json:"last"`
+	LowestAsk        string `json:"lowest_ask"`
+	HighestBid       string `json:"highest_bid"`
+	ChangePercentage string `json:"change_percentage"`
+	BaseVolume       string `json:"base_volume"`
+	QuoteVolume      string `json:"quote_volume"`
+	High24h          string `json:"high_24h"`
+	Low24h           string `json:"low_24h"`
 }
 
 // GateTickerMessage represents Gate.io ticker WebSocket message
 type GateTickerMessage struct {
-	Time    int64  `json:"time"`
-	TimeMs  int64  `json:"time_ms"`
-	Channel string `json:"channel"`
-	Event   string `json:"event"`
-	Result  struct {
-		CurrencyPair     string `json:"currency_pair"`
-		Last             string `json:"last"`
-		LowestAsk        string `json:"lowest_ask"`
-		HighestBid       string `json:"highest_bid"`
-		ChangePercentage string `json:"change_percentage"`
-		BaseVolume       string `json:"base_volume"`
-		QuoteVolume      string `json:"quote_volume"`
-		High24h          string `json:"high_24h"`
-		Low24h           string `json:"low_24h"`
-	} `json:"result"`
+	Time    int64             `json:"time"`
+	TimeMs  int64             `json:"time_ms"`
+	Channel string            `json:"channel"`
+	Event   string            `json:"event"`
+	Result  []GateTickerData  `json:"result"` // Array for futures.tickers
 }
 
 // NewGateHandler creates a new Gate.io WebSocket handler
@@ -55,6 +59,7 @@ func NewGateHandler(cfg config.ExchangeConfig) *GateHandler {
 			Symbols: cfg.Symbols,
 		},
 		requestID: 1,
+		symbolConverter: NewSymbolConverter(),
 	}
 }
 
@@ -62,12 +67,12 @@ func NewGateHandler(cfg config.ExchangeConfig) *GateHandler {
 func (h *GateHandler) Connect() error {
 	log := logger.WithExchange("gate")
 	
-	// Gate.io requires the endpoint to be spot specific
+	// Gate.io futures WebSocket endpoint
 	wsURL := h.config.WSURL
-	if !strings.Contains(wsURL, "/ws/v4/") {
-		wsURL = strings.TrimSuffix(wsURL, "/") + "/"
+	// Ensure the URL ends with /usdt for futures
+	if !strings.HasSuffix(wsURL, "/usdt") {
+		wsURL = strings.TrimSuffix(wsURL, "/") + "/usdt"
 	}
-	wsURL = wsURL + "spot"
 	
 	log.Infof("Connecting to %s", wsURL)
 
@@ -99,12 +104,14 @@ func (h *GateHandler) Connect() error {
 // subscribe sends subscription message to Gate.io
 func (h *GateHandler) subscribe() error {
 	for _, symbol := range h.config.Symbols {
+		// Convert symbol format: btc-usdt -> BTC_USDT
+		wsSymbol := h.symbolConverter.ConfigToWebSocket("gate", symbol)
 		subscribeMsg := map[string]interface{}{
 			"time":    time.Now().Unix(),
 			"id":      atomic.AddInt64(&h.requestID, 1),
-			"channel": "spot.tickers",
+			"channel": "futures.tickers",
 			"event":   "subscribe",
-			"payload": []string{symbol},
+			"payload": []string{wsSymbol},
 		}
 
 		h.mu.RLock()
@@ -202,7 +209,7 @@ func (h *GateHandler) processMessage(data []byte) error {
 		if response.Event == "subscribe" && response.Result.Status == "success" {
 			return nil // Subscription confirmed
 		}
-		if response.Channel == "spot.pong" {
+		if response.Channel == "futures.pong" {
 			return nil // Pong response
 		}
 		if response.Error.Code != 0 {
@@ -217,28 +224,43 @@ func (h *GateHandler) processMessage(data []byte) error {
 	}
 
 	// Process ticker data
-	if msg.Channel == "spot.tickers" && msg.Event == "update" {
-		return h.processTicker(&msg)
+	if (msg.Channel == "futures.tickers" || msg.Channel == "spot.tickers") && msg.Event == "update" {
+		return h.processTickerArray(&msg)
 	}
 
 	return nil
 }
 
-// processTicker processes a ticker message
-func (h *GateHandler) processTicker(msg *GateTickerMessage) error {
+// processTickerArray processes ticker messages (handles both single object and array formats)
+func (h *GateHandler) processTickerArray(msg *GateTickerMessage) error {
+	// Process each ticker in the result array
+	for _, tickerData := range msg.Result {
+		if err := h.processTicker(&tickerData); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// processTicker processes a single ticker data object
+func (h *GateHandler) processTicker(data *GateTickerData) error {
 	// Convert to normalized ticker data
+	log := logger.WithExchange("gate")
+	log.Debugf("Converting currency_pair: %s", data.CurrencyPair)
+	storageSymbol := h.symbolConverter.WebSocketToStorage("gate", data.CurrencyPair)
+	log.Debugf("Converted to storage symbol: %s", storageSymbol)
 	ticker := &TickerData{
-		Symbol:    normalizeGateSymbol(msg.Result.CurrencyPair),
+		Symbol:    storageSymbol,
 		Timestamp: time.Now(), // Use receive time instead of exchange timestamp
 	}
 
 	// Parse prices
-	ticker.Last, _ = strconv.ParseFloat(msg.Result.Last, 64)
-	ticker.Bid, _ = strconv.ParseFloat(msg.Result.HighestBid, 64)
-	ticker.Ask, _ = strconv.ParseFloat(msg.Result.LowestAsk, 64)
-	ticker.High, _ = strconv.ParseFloat(msg.Result.High24h, 64)
-	ticker.Low, _ = strconv.ParseFloat(msg.Result.Low24h, 64)
-	ticker.Volume, _ = strconv.ParseFloat(msg.Result.BaseVolume, 64)
+	ticker.Last, _ = strconv.ParseFloat(data.Last, 64)
+	ticker.Bid, _ = strconv.ParseFloat(data.HighestBid, 64)
+	ticker.Ask, _ = strconv.ParseFloat(data.LowestAsk, 64)
+	ticker.High, _ = strconv.ParseFloat(data.High24h, 64)
+	ticker.Low, _ = strconv.ParseFloat(data.Low24h, 64)
+	ticker.Volume, _ = strconv.ParseFloat(data.BaseVolume, 64)
 
 	// Call callback if set
 	if h.callback != nil {
@@ -284,7 +306,7 @@ func (h *GateHandler) keepAlive() {
 		pingMsg := map[string]interface{}{
 			"time":    time.Now().Unix(),
 			"id":      atomic.AddInt64(&h.requestID, 1),
-			"channel": "spot.ping",
+			"channel": "futures.ping",
 		}
 		if err := conn.WriteJSON(pingMsg); err != nil {
 			logger.WithExchange("gate").Errorf("Failed to send ping: %v", err)

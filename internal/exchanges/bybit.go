@@ -26,6 +26,7 @@ type BybitHandler struct {
 	reconnectCount int64
 	tickerCache    map[string]*TickerData // Cache for merging delta updates
 	cacheMu        sync.RWMutex
+	symbolConverter *SymbolConverter
 }
 
 // BybitTickerData represents the ticker data structure
@@ -79,6 +80,7 @@ func NewBybitHandler(cfg config.ExchangeConfig) *BybitHandler {
 			Symbols: cfg.Symbols,
 		},
 		tickerCache: make(map[string]*TickerData),
+		symbolConverter: NewSymbolConverter(),
 	}
 }
 
@@ -116,8 +118,10 @@ func (h *BybitHandler) Connect() error {
 func (h *BybitHandler) subscribe() error {
 	args := make([]string, 0, len(h.config.Symbols))
 	for _, symbol := range h.config.Symbols {
+		// Convert symbol format: shib1000-usdt -> SHIB1000USDT
+		wsSymbol := h.symbolConverter.ConfigToWebSocket("bybit", symbol)
 		// Bybit uses format: tickers.{symbol}
-		args = append(args, fmt.Sprintf("tickers.%s", symbol))
+		args = append(args, fmt.Sprintf("tickers.%s", wsSymbol))
 	}
 
 	subscribeMsg := map[string]interface{}{
@@ -252,7 +256,8 @@ func (h *BybitHandler) processTicker(msg *BybitTickerMessage) error {
 
 // processTickerData processes individual ticker data
 func (h *BybitHandler) processTickerData(data *BybitTickerData, ts int64) error {
-	symbol := normalizeBybitSymbol(data.Symbol)
+	// Convert WebSocket symbol to storage format
+	symbol := h.symbolConverter.WebSocketToStorage("bybit", data.Symbol)
 	
 	// Get or create cached ticker
 	h.cacheMu.Lock()

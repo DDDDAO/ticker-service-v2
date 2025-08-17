@@ -7,65 +7,113 @@ redis:
   db: 0
 
 logging:
-  level: info
+  level: debug
   format: json
   production: false  # Set to true to only show errors/warnings
-  ticker_updates: false  # Set to false to disable verbose ticker update logs
+  ticker_updates: true  # Set to false to disable verbose ticker update logs
+
+# Use the ACTUAL symbol names for each exchange
+# Binance uses 1000SHIB, 1000PEPE for small-value tokens
+# Bybit uses SHIB1000, 1000PEPE
+# Others use regular SHIB, PEPE
 
 exchanges:
   binance:
     enabled: true
-    ws_url: wss://stream.binance.com:9443
+    ws_url: wss://fstream.binance.com
     symbols:
-      - btcusdt@ticker
-      - ethusdt@ticker
-      - bnbusdt@ticker
-      - solusdt@ticker
-      - adausdt@ticker
+      - btc-usdt
+      - eth-usdt
+      - xrp-usdt
+      - bnb-usdt
+      - sol-usdt
+      - doge-usdt
+      - ada-usdt
+      - trx-usdt
+      - link-usdt
+      - xlm-usdt
+      - sui-usdt
+      - uni-usdt
+      - ena-usdt
+      - 1000shib-usdt    # Binance futures symbol
+      - 1000pepe-usdt    # Binance futures symbol
 
   okx:
     enabled: true
     ws_url: wss://ws.okx.com:8443/ws/v5/public
     symbols:
-      - BTC-USDT
-      - ETH-USDT
-      - SOL-USDT
-      - BNB-USDT
-      - PEPE-USDT
-      - DOGE-USDT
-      - SHIB-USDT
-      - MATIC-USDT
-      - AVAX-USDT
-      - LINK-USDT
+      - btc-usdt
+      - eth-usdt
+      - xrp-usdt
+      - bnb-usdt
+      - sol-usdt
+      - doge-usdt
+      - ada-usdt
+      - trx-usdt
+      - link-usdt
+      - xlm-usdt
+      - sui-usdt
+      - uni-usdt
+      - ena-usdt
+      - shib-usdt        # OKX uses regular SHIB
+      - pepe-usdt        # OKX uses regular PEPE
 
   bybit:
     enabled: true
     ws_url: wss://stream.bybit.com/v5/public/linear
     symbols:
-      - BTCUSDT
-      - ETHUSDT
-      - SOLUSDT
-      - BNBUSDT
-      - DOGEUSDT
-      - SHIBUSDT
-      - PEPEUSDT
+      - btc-usdt
+      - eth-usdt
+      - xrp-usdt
+      - bnb-usdt
+      - sol-usdt
+      - doge-usdt
+      - ada-usdt
+      - trx-usdt
+      - link-usdt
+      - xlm-usdt
+      - sui-usdt
+      - uni-usdt
+      - ena-usdt
+      - shib1000-usdt    # Bybit's actual symbol (weird format!)
+      - 1000pepe-usdt    # Bybit's actual symbol
 
   bitget:
     enabled: true
-    ws_url: wss://ws.bitget.com/v2/ws/public
+    ws_url: wss://ws.bitget.com/mix/v1/stream
     symbols:
-      - BTCUSDT
-      - ETHUSDT
-      - SOLUSDT
-      - BNBUSDT
-      - DOGEUSDT
+      - btc-usdt
+      - eth-usdt
+      - xrp-usdt
+      - bnb-usdt
+      - sol-usdt
+      - doge-usdt
+      - ada-usdt
+      - trx-usdt
+      - link-usdt
+      - xlm-usdt
+      - sui-usdt
+      - uni-usdt
+      - ena-usdt
+      - shib-usdt        # Bitget uses regular SHIB
+      - pepe-usdt        # Bitget uses regular PEPE
 
   gate:
     enabled: true
-    ws_url: wss://api.gateio.ws/ws/v4/
+    ws_url: wss://fx-ws.gateio.ws/v4/ws/usdt
     symbols:
-      - BTC_USDT
-      - ETH_USDT
-      - SOL_USDT
-      - BNB_USDT
-      - DOGE_USDT
+      - btc-usdt
+      - eth-usdt
+      - xrp-usdt
+      - bnb-usdt
+      - sol-usdt
+      - doge-usdt
+      - ada-usdt
+      - trx-usdt
+      - link-usdt
+      - xlm-usdt
+      - sui-usdt
+      - uni-usdt
+      - ena-usdt
+      - shib-usdt        # Gate uses regular SHIB
+      - pepe-usdt        # Gate uses regular PEPE

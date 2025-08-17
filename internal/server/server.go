@@ -105,24 +105,23 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Convert to internal format: btc-usdt -> BTC/USDT
-	symbol = strings.ReplaceAll(symbol, "-", "/")
-	symbol = strings.ToUpper(symbol)
+	// Keep symbol in lowercase-dash format (btc-usdt)
+	// This is the exact symbol name - no conversion needed
+	storageSymbol := strings.ToLower(symbol)
 
 	// Get latest ticker from Redis
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	key := fmt.Sprintf("ticker:latest:%s:%s", exchange, symbol)
+	// Redis key format: ticker:{exchange}:{symbol}
+	key := fmt.Sprintf("ticker:%s:%s", exchange, storageSymbol)
 	data, err := s.redis.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			// Try to auto-subscribe to the symbol
-			// For Binance, convert symbol format to exchange format (BTC/USDT -> BTCUSDT)
-			exchangeSymbol := strings.ReplaceAll(symbol, "/", "")
-			
-			// Subscribe to the symbol
-			if subscribeErr := s.manager.Subscribe(exchange, exchangeSymbol); subscribeErr == nil {
+			// Try to auto-subscribe to the symbol (only works for Binance)
+			// Input symbol is already in config format (btc-usdt)
+			// Use the original symbol (in config format) for subscription
+			if subscribeErr := s.manager.Subscribe(exchange, strings.ToLower(symbol)); subscribeErr == nil {
 				// Wait a moment for data to arrive (only for Binance which supports dynamic subscription)
 				if exchange == "binance" {
 					time.Sleep(2 * time.Second)

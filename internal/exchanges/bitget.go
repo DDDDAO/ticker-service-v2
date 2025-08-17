@@ -24,6 +24,7 @@ type BitgetHandler struct {
 	messageCount   int64
 	errorCount     int64
 	reconnectCount int64
+	symbolConverter *SymbolConverter
 }
 
 // BitgetTickerMessage represents Bitget ticker WebSocket message
@@ -36,10 +37,10 @@ type BitgetTickerMessage struct {
 	} `json:"arg"`
 	Data []struct {
 		InstID       string `json:"instId"`
-		LastPr       string `json:"lastPr"`      // Last price
-		BidPr        string `json:"bidPr"`       // Bid price
+		Last         string `json:"last"`        // Last price
+		BestBid      string `json:"bestBid"`     // Best bid price
 		BidSz        string `json:"bidSz"`       // Bid size
-		AskPr        string `json:"askPr"`       // Ask price
+		BestAsk      string `json:"bestAsk"`     // Best ask price
 		AskSz        string `json:"askSz"`       // Ask size
 		Open24h      string `json:"open24h"`     // 24h open
 		High24h      string `json:"high24h"`     // 24h high
@@ -61,6 +62,7 @@ func NewBitgetHandler(cfg config.ExchangeConfig) *BitgetHandler {
 		status: ExchangeStatus{
 			Symbols: cfg.Symbols,
 		},
+		symbolConverter: NewSymbolConverter(),
 	}
 }
 
@@ -98,10 +100,12 @@ func (h *BitgetHandler) Connect() error {
 func (h *BitgetHandler) subscribe() error {
 	args := make([]map[string]string, 0, len(h.config.Symbols))
 	for _, symbol := range h.config.Symbols {
+		// Convert symbol format: btc-usdt -> BTCUSDT
+		wsSymbol := h.symbolConverter.ConfigToWebSocket("bitget", symbol)
 		args = append(args, map[string]string{
-			"instType": "SPOT",
+			"instType": "mc",
 			"channel":  "ticker",
-			"instId":   symbol,
+			"instId":   wsSymbol,
 		})
 	}
 
@@ -199,19 +203,27 @@ func (h *BitgetHandler) processMessage(data []byte) error {
 		}
 	}
 
+	// Log raw message for debugging
+	log := logger.WithExchange("bitget")
+	log.Debugf("Raw message: %s", string(data))
+
 	// Parse ticker message
 	var msg BitgetTickerMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
+		log.Errorf("Failed to parse ticker message: %v", err)
 		return fmt.Errorf("failed to parse message: %w", err)
 	}
 
 	// Process ticker data
 	if msg.Action == "snapshot" || msg.Action == "update" {
+		log.Debugf("Processing %d tickers, action: %s", len(msg.Data), msg.Action)
 		for _, ticker := range msg.Data {
 			if err := h.processTicker(&ticker); err != nil {
 				return err
 			}
 		}
+	} else {
+		log.Debugf("Ignoring message with action: %s", msg.Action)
 	}
 
 	return nil
@@ -220,10 +232,10 @@ func (h *BitgetHandler) processMessage(data []byte) error {
 // processTicker processes a ticker message
 func (h *BitgetHandler) processTicker(data *struct {
 	InstID       string `json:"instId"`
-	LastPr       string `json:"lastPr"`      // Last price
-	BidPr        string `json:"bidPr"`       // Bid price
+	Last         string `json:"last"`        // Last price
+	BestBid      string `json:"bestBid"`     // Best bid price
 	BidSz        string `json:"bidSz"`       // Bid size
-	AskPr        string `json:"askPr"`       // Ask price
+	BestAsk      string `json:"bestAsk"`     // Best ask price
 	AskSz        string `json:"askSz"`       // Ask size
 	Open24h      string `json:"open24h"`     // 24h open
 	High24h      string `json:"high24h"`     // 24h high
@@ -240,14 +252,14 @@ func (h *BitgetHandler) processTicker(data *struct {
 
 	// Convert to normalized ticker data
 	ticker := &TickerData{
-		Symbol:    normalizeBitgetSymbol(data.InstID),
+		Symbol:    h.symbolConverter.WebSocketToStorage("bitget", data.InstID),
 		Timestamp: timestamp,
 	}
 
 	// Parse prices using correct field names
-	ticker.Last, _ = strconv.ParseFloat(data.LastPr, 64)
-	ticker.Bid, _ = strconv.ParseFloat(data.BidPr, 64)
-	ticker.Ask, _ = strconv.ParseFloat(data.AskPr, 64)
+	ticker.Last, _ = strconv.ParseFloat(data.Last, 64)
+	ticker.Bid, _ = strconv.ParseFloat(data.BestBid, 64)
+	ticker.Ask, _ = strconv.ParseFloat(data.BestAsk, 64)
 	ticker.High, _ = strconv.ParseFloat(data.High24h, 64)
 	ticker.Low, _ = strconv.ParseFloat(data.Low24h, 64)
 	ticker.Volume, _ = strconv.ParseFloat(data.BaseVolume, 64)

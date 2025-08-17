@@ -121,9 +121,9 @@ func (m *Manager) publishTicker(exchange string, data *TickerData) {
 	}
 	publishLatency := time.Since(publishStart).Milliseconds()
 
-	// Also store latest ticker in Redis with TTL
+	// Also store ticker in Redis with TTL (we only store latest, so no need for "latest" in key)
 	storeStart := time.Now()
-	key := fmt.Sprintf("ticker:latest:%s:%s", exchange, data.Symbol)
+	key := fmt.Sprintf("ticker:%s:%s", exchange, data.Symbol)
 	if err := m.redis.Set(ctx, key, data.ToJSON(), 30*time.Second).Err(); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"exchange": exchange,

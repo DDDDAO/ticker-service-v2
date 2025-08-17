@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,6 +25,7 @@ type BinanceHandler struct {
 	reconnectCount int64
 	subscribedSymbols map[string]bool // Track which symbols we want to receive
 	symbolsMu         sync.RWMutex
+	symbolConverter   *SymbolConverter
 }
 
 // BinanceMiniTickerMessage represents Binance mini ticker WebSocket message
@@ -72,19 +72,24 @@ type BinanceTickerMessage struct {
 // NewBinanceHandler creates a new Binance WebSocket handler
 func NewBinanceHandler(cfg config.ExchangeConfig) *BinanceHandler {
 	// Convert symbol list to a map for faster lookups
+	converter := NewSymbolConverter()
 	subscribed := make(map[string]bool)
-	for _, symbol := range cfg.Symbols {
-		// Convert format: "btcusdt@ticker" -> "BTCUSDT"
-		if idx := strings.Index(symbol, "@"); idx > 0 {
-			subscribed[strings.ToUpper(symbol[:idx])] = true
-		} else {
-			subscribed[strings.ToUpper(symbol)] = true
-		}
+	for _, configSymbol := range cfg.Symbols {
+		// Convert from config format (1000pepe-usdt) to WebSocket format (1000PEPEUSDT)
+		wsSymbol := converter.ConfigToWebSocket("binance", configSymbol)
+		subscribed[wsSymbol] = true
+	}
+	
+	// Log the subscribed symbols for debugging
+	logger.WithExchange("binance").Infof("Subscribed to %d symbols", len(subscribed))
+	for symbol := range subscribed {
+		logger.WithExchange("binance").Debugf("Subscribed WebSocket symbol: %s", symbol)
 	}
 	
 	return &BinanceHandler{
 		config:            cfg,
 		subscribedSymbols: subscribed,
+		symbolConverter:   converter,
 		status: ExchangeStatus{
 			Symbols: cfg.Symbols,
 		},
@@ -222,7 +227,7 @@ func (h *BinanceHandler) processMiniTicker(msg *BinanceMiniTickerMessage) error 
 	// Convert to normalized ticker data
 	// Use current time as timestamp since Binance sends 1-second interval updates
 	ticker := &TickerData{
-		Symbol:    normalizeBinanceSymbol(msg.Symbol),
+		Symbol:    h.normalizeBinanceSymbol(msg.Symbol), // Will be like "1000pepe-usdt"
 		Timestamp: time.Now(), // Use receive time instead of event time
 	}
 
@@ -253,7 +258,7 @@ func (h *BinanceHandler) processTicker(msg *BinanceTickerMessage) error {
 	// Convert to normalized ticker data
 	// Use current time as timestamp since exchanges send cached/delayed data
 	ticker := &TickerData{
-		Symbol:    normalizeSymbol(msg.Symbol),
+		Symbol:    h.normalizeBinanceSymbol(msg.Symbol),
 		Timestamp: time.Now(), // Use receive time instead of event time
 	}
 
@@ -279,25 +284,27 @@ func (h *BinanceHandler) OnMessage(callback func(*TickerData)) {
 }
 
 // Subscribe adds a new symbol to track
+// Input should be in config format (e.g., "1000pepe-usdt")
 func (h *BinanceHandler) Subscribe(symbol string) {
 	h.symbolsMu.Lock()
 	defer h.symbolsMu.Unlock()
 	
-	// Normalize symbol to uppercase
-	normalizedSymbol := strings.ToUpper(symbol)
-	h.subscribedSymbols[normalizedSymbol] = true
+	// Convert to WebSocket format (e.g., "1000PEPEUSDT")
+	wsSymbol := h.symbolConverter.ConfigToWebSocket("binance", symbol)
+	h.subscribedSymbols[wsSymbol] = true
 	
 	logger.WithSymbol("binance", symbol).Info("Subscribed to symbol")
 }
 
 // Unsubscribe removes a symbol from tracking
+// Input should be in config format (e.g., "1000pepe-usdt")
 func (h *BinanceHandler) Unsubscribe(symbol string) {
 	h.symbolsMu.Lock()
 	defer h.symbolsMu.Unlock()
 	
-	// Normalize symbol to uppercase
-	normalizedSymbol := strings.ToUpper(symbol)
-	delete(h.subscribedSymbols, normalizedSymbol)
+	// Convert to WebSocket format (e.g., "1000PEPEUSDT")
+	wsSymbol := h.symbolConverter.ConfigToWebSocket("binance", symbol)
+	delete(h.subscribedSymbols, wsSymbol)
 	
 	logger.WithSymbol("binance", symbol).Info("Unsubscribed from symbol")
 }
@@ -330,13 +337,10 @@ func (h *BinanceHandler) GetStatus() ExchangeStatus {
 	return status
 }
 
-// normalizeBinanceSymbol converts Binance symbol format to standard format
-func normalizeBinanceSymbol(symbol string) string {
-	// BTCUSDT -> BTC/USDT
-	if len(symbol) > 4 && symbol[len(symbol)-4:] == "USDT" {
-		return symbol[:len(symbol)-4] + "/USDT"
-	}
-	return symbol
+// normalizeBinanceSymbol converts Binance WebSocket symbol to storage format
+func (h *BinanceHandler) normalizeBinanceSymbol(wsSymbol string) string {
+	// Convert from WebSocket format (1000PEPEUSDT) to storage format (1000pepe-usdt)
+	return h.symbolConverter.WebSocketToStorage("binance", wsSymbol)
 }
 
 // keepAlive sends periodic pings to keep the connection alive
@@ -361,15 +365,6 @@ func (h *BinanceHandler) keepAlive() {
 	}
 }
 
-// normalizeSymbol converts Binance symbol format to standard format
-func normalizeSymbol(symbol string) string {
-	// Convert BTCUSDT to BTC/USDT
-	if strings.HasSuffix(symbol, "USDT") {
-		base := strings.TrimSuffix(symbol, "USDT")
-		return fmt.Sprintf("%s/USDT", base)
-	}
-	return symbol
-}
 
 // parseFloat converts interface{} to float64, handling both string and number formats
 func parseFloat(v interface{}) float64 {
