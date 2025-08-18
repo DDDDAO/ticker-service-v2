@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: ${{ github.ref == 'refs/heads/main' && 'ticker-service-v2' || 'ticker-service-v2-dev' }}
+      SERVER_HOST: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_HOST || secrets.DEV_SERVER_HOST }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Build && Save Docker Image
+        run: |
+          docker build --build-arg CI_COMMIT_SHA=$(echo ${{ github.sha }} | cut -c1-7) -t ${{ env.APP_NAME }} .
+          docker save -o ${{ env.APP_NAME }}.tar ${{ env.APP_NAME }}
+          chmod 644 ${{ env.APP_NAME }}.tar
+          ls -l ${{ env.APP_NAME }}.tar
+
+      - name: SCP Docker Image
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_PEM }}
+          port: ${{ secrets.SERVER_PORT }}
+          source: ./${{ env.APP_NAME }}.tar
+          target: /home/${{ secrets.SERVER_USERNAME }}/images
+      
+      - name: SCP Docker Compose and Config Files
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_PEM }}
+          port: ${{ secrets.SERVER_PORT }}
+          source: "docker-compose.yml,docker-compose.prod.yml,config.yaml,config.production.yaml"
+          target: /home/${{ secrets.SERVER_USERNAME }}/deploy/${{ env.APP_NAME }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: ${{ github.ref == 'refs/heads/main' && 'ticker-service-v2' || 'ticker-service-v2-dev' }}
+      SERVER_HOST: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_HOST || secrets.DEV_SERVER_HOST }}
+      COMPOSE_FILE: ${{ github.ref == 'refs/heads/main' && 'docker-compose.prod.yml' || 'docker-compose.yml' }}
+    steps:
+      - name: Deploy Docker Container
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_PEM }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            # Load the Docker image
+            cd /home/${{ secrets.SERVER_USERNAME }}/images && sudo docker load -i ${{ env.APP_NAME }}.tar
+            
+            # Deploy using the appropriate docker-compose file
+            cd /home/${{ secrets.SERVER_USERNAME }}/deploy/${{ env.APP_NAME }}
+            sudo docker compose -f ${{ env.COMPOSE_FILE }} down
+            sudo docker compose -f ${{ env.COMPOSE_FILE }} up -d
+            sudo docker ps
+            sudo docker compose -f ${{ env.COMPOSE_FILE }} logs --tail=50
+            
+            # Clean up old images
+            sudo docker system prune -f

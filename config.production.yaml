@@ -1,22 +1,17 @@
+# Production configuration for ticker-service-v2
+
 server:
   port: 8080
 
 redis:
-  # Leave addr empty to use in-memory storage instead of Redis
-  addr: ""  # Set to "localhost:6379" to use Redis
-  password: ""
-  db: 0
+  # Configure Redis for production, or leave addr empty for in-memory storage
+  addr: ""
 
 logging:
-  level: debug
+  level: info
   format: json
-  production: false  # Set to true to only show errors/warnings
-  ticker_updates: false  # Set to false to disable verbose ticker update logs
-
-# Use the ACTUAL symbol names for each exchange
-# Binance uses 1000SHIB, 1000PEPE for small-value tokens
-# Bybit uses SHIB1000, 1000PEPE
-# Others use regular SHIB, PEPE
+  production: true     # Only show errors/warnings
+  ticker_updates: false  # Disable verbose ticker logs
 
 exchanges:
   binance:
@@ -36,8 +31,8 @@ exchanges:
       - sui-usdt
       - uni-usdt
       - ena-usdt
-      - 1000shib-usdt    # Binance futures symbol
-      - 1000pepe-usdt    # Binance futures symbol
+      - 1000shib-usdt
+      - 1000pepe-usdt
 
   okx:
     enabled: true
@@ -56,8 +51,8 @@ exchanges:
       - sui-usdt
       - uni-usdt
       - ena-usdt
-      - shib-usdt        # OKX uses regular SHIB
-      - pepe-usdt        # OKX uses regular PEPE
+      - shib-usdt
+      - pepe-usdt
 
   bybit:
     enabled: true
@@ -76,8 +71,8 @@ exchanges:
       - sui-usdt
       - uni-usdt
       - ena-usdt
-      - shib1000-usdt    # Bybit's actual symbol (weird format!)
-      - 1000pepe-usdt    # Bybit's actual symbol
+      - shib1000-usdt
+      - 1000pepe-usdt
 
   bitget:
     enabled: true
@@ -96,8 +91,8 @@ exchanges:
       - sui-usdt
       - uni-usdt
       - ena-usdt
-      - shib-usdt        # Bitget uses regular SHIB
-      - pepe-usdt        # Bitget uses regular PEPE
+      - shib-usdt
+      - pepe-usdt
 
   gate:
     enabled: true
@@ -116,5 +111,5 @@ exchanges:
       - sui-usdt
       - uni-usdt
       - ena-usdt
-      - shib-usdt        # Gate uses regular SHIB
-      - pepe-usdt        # Gate uses regular PEPE
+      - shib-usdt
+      - pepe-usdt

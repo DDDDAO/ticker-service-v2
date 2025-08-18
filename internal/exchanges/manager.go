@@ -7,23 +7,23 @@ import (
 	"time"
 
 	"github.com/ddddao/ticker-service-v2/internal/logger"
-	"github.com/redis/go-redis/v9"
+	"github.com/ddddao/ticker-service-v2/internal/storage"
 	"github.com/sirupsen/logrus"
 )
 
 // Manager manages all exchange WebSocket connections
 type Manager struct {
 	exchanges map[string]Handler
-	redis     *redis.Client
+	storage   storage.Storage
 	mu        sync.RWMutex
 	wg        sync.WaitGroup
 }
 
 // NewManager creates a new exchange manager
-func NewManager(redisClient *redis.Client) *Manager {
+func NewManager(storage storage.Storage) *Manager {
 	return &Manager{
 		exchanges: make(map[string]Handler),
-		redis:     redisClient,
+		storage:   storage,
 	}
 }
 
@@ -101,46 +101,32 @@ func (m *Manager) runExchange(ctx context.Context, name string, handler Handler)
 	}
 }
 
-// publishTicker publishes ticker data to Redis
+// publishTicker publishes ticker data to storage
 func (m *Manager) publishTicker(exchange string, data *TickerData) {
 	ctx := context.Background()
-	channel := fmt.Sprintf("ticker:%s:%s", exchange, data.Symbol)
 	
 	// Calculate processing latency
 	processingLatency := time.Since(data.Timestamp).Milliseconds()
 	
-	// Publish to Redis channel
-	publishStart := time.Now()
-	if err := m.redis.Publish(ctx, channel, data.ToJSON()).Err(); err != nil {
-		logrus.WithFields(logrus.Fields{
-			"exchange": exchange,
-			"symbol":   data.Symbol,
-			"app":      "ticker-service-v2",
-		}).Errorf("Failed to publish ticker: %v", err)
-		return
-	}
-	publishLatency := time.Since(publishStart).Milliseconds()
-
-	// Also store ticker in Redis with TTL (we only store latest, so no need for "latest" in key)
+	// Store ticker data
 	storeStart := time.Now()
-	key := fmt.Sprintf("ticker:%s:%s", exchange, data.Symbol)
-	if err := m.redis.Set(ctx, key, data.ToJSON(), 30*time.Second).Err(); err != nil {
+	if err := m.storage.Publish(ctx, exchange, data.Symbol, []byte(data.ToJSON())); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"exchange": exchange,
 			"symbol":   data.Symbol,
 			"app":      "ticker-service-v2",
 		}).Errorf("Failed to store ticker: %v", err)
+		return
 	}
 	storeLatency := time.Since(storeStart).Milliseconds()
 
 	// Log performance metrics at warn level only for actual high latency
 	// Processing latency < 50ms is expected since we use receive time
-	if processingLatency > 50 || publishLatency > 20 || storeLatency > 20 {
+	if processingLatency > 50 || storeLatency > 20 {
 		logrus.WithFields(logrus.Fields{
 			"exchange":              exchange,
 			"symbol":                data.Symbol,
 			"processing_latency_ms": processingLatency,
-			"publish_latency_ms":    publishLatency,
 			"store_latency_ms":      storeLatency,
 			"app":                   "ticker-service-v2",
 		}).Warn("High latency detected")
@@ -152,7 +138,6 @@ func (m *Manager) publishTicker(exchange string, data *TickerData) {
 			"price":                 data.Last,
 			"volume":                data.Volume,
 			"processing_latency_ms": processingLatency,
-			"publish_latency_ms":    publishLatency,
 			"store_latency_ms":      storeLatency,
 			"app":                   "ticker-service-v2",
 		}).Debug("Ticker received")

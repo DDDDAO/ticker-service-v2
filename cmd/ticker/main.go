@@ -12,8 +12,8 @@ import (
 	"github.com/ddddao/ticker-service-v2/internal/config"
 	"github.com/ddddao/ticker-service-v2/internal/exchanges"
 	"github.com/ddddao/ticker-service-v2/internal/logger"
-	"github.com/ddddao/ticker-service-v2/internal/redis"
 	"github.com/ddddao/ticker-service-v2/internal/server"
+	"github.com/ddddao/ticker-service-v2/internal/storage"
 	"github.com/sirupsen/logrus"
 )
 
@@ -31,19 +31,28 @@ func main() {
 	// Initialize logger
 	logger.Init(cfg.Logging)
 
-	// Initialize Redis client
-	redisClient, err := redis.NewClient(cfg.Redis)
-	if err != nil {
-		logrus.Fatalf("Failed to connect to Redis: %v", err)
+	// Initialize storage (Redis or in-memory)
+	var stor storage.Storage
+	
+	// Try to connect to Redis if configured
+	if cfg.Redis.Addr != "" {
+		stor, err = storage.NewRedisStorage(cfg.Redis)
+		if err != nil {
+			logrus.Warnf("Failed to connect to Redis (%v), falling back to in-memory storage", err)
+			stor = storage.NewMemoryStorage()
+		}
+	} else {
+		logrus.Info("Redis not configured, using in-memory storage")
+		stor = storage.NewMemoryStorage()
 	}
-	defer redisClient.Close()
+	defer stor.Close()
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Initialize exchange manager
-	manager := exchanges.NewManager(redisClient)
+	manager := exchanges.NewManager(stor)
 
 	// Start enabled exchanges
 	for name, exchCfg := range cfg.Exchanges {
@@ -69,7 +78,7 @@ func main() {
 	manager.Start(ctx)
 
 	// Start HTTP server
-	srv := server.New(cfg.Server, manager, redisClient)
+	srv := server.New(cfg.Server, manager, stor)
 	go func() {
 		logrus.Infof("Starting HTTP server on port %d", cfg.Server.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

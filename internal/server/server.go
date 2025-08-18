@@ -10,7 +10,7 @@ import (
 
 	"github.com/ddddao/ticker-service-v2/internal/config"
 	"github.com/ddddao/ticker-service-v2/internal/exchanges"
-	"github.com/redis/go-redis/v9"
+	"github.com/ddddao/ticker-service-v2/internal/storage"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,11 +18,11 @@ import (
 type Server struct {
 	*http.Server
 	manager *exchanges.Manager
-	redis   *redis.Client
+	storage storage.Storage
 }
 
 // New creates a new HTTP server
-func New(cfg config.ServerConfig, manager *exchanges.Manager, redisClient *redis.Client) *Server {
+func New(cfg config.ServerConfig, manager *exchanges.Manager, storage storage.Storage) *Server {
 	mux := http.NewServeMux()
 	
 	s := &Server{
@@ -31,7 +31,7 @@ func New(cfg config.ServerConfig, manager *exchanges.Manager, redisClient *redis
 			Handler: mux,
 		},
 		manager: manager,
-		redis:   redisClient,
+		storage: storage,
 	}
 
 	// Register routes
@@ -47,20 +47,24 @@ func New(cfg config.ServerConfig, manager *exchanges.Manager, redisClient *redis
 
 // handleHealth handles health check requests
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	// Check Redis connection
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	defer cancel()
-
-	redisOK := s.redis.Ping(ctx).Err() == nil
-
-	response := map[string]interface{}{
-		"status": "ok",
-		"redis":  redisOK,
-		"time":   time.Now().UTC(),
-		"app":    "ticker-service-v2",
+	// Check storage connection
+	storageOK := s.storage.IsConnected()
+	storageType := "memory"
+	
+	// Check if it's Redis storage
+	if _, ok := s.storage.(*storage.RedisStorage); ok {
+		storageType = "redis"
 	}
 
-	if !redisOK {
+	response := map[string]interface{}{
+		"status":       "ok",
+		"storage":      storageOK,
+		"storage_type": storageType,
+		"time":         time.Now().UTC(),
+		"app":          "ticker-service-v2",
+	}
+
+	if !storageOK {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		response["status"] = "degraded"
 	}
@@ -109,54 +113,48 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 	// This is the exact symbol name - no conversion needed
 	storageSymbol := strings.ToLower(symbol)
 
-	// Get latest ticker from Redis
+	// Get latest ticker from storage
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	// Redis key format: ticker:{exchange}:{symbol}
-	key := fmt.Sprintf("ticker:%s:%s", exchange, storageSymbol)
-	data, err := s.redis.Get(ctx, key).Result()
+	data, err := s.storage.Get(ctx, exchange, storageSymbol)
 	if err != nil {
-		if err == redis.Nil {
-			// Try to auto-subscribe to the symbol (only works for Binance)
-			// Input symbol is already in config format (btc-usdt)
-			// Use the original symbol (in config format) for subscription
-			if subscribeErr := s.manager.Subscribe(exchange, strings.ToLower(symbol)); subscribeErr == nil {
-				// Wait a moment for data to arrive (only for Binance which supports dynamic subscription)
-				if exchange == "binance" {
-					time.Sleep(2 * time.Second)
-					
-					// Try to get the data again
-					data, err = s.redis.Get(ctx, key).Result()
-					if err == nil {
-						// Success! Continue to return the data
-						goto returnData
-					}
+		// Try to auto-subscribe to the symbol
+		// Input symbol is already in config format (btc-usdt)
+		// Use the original symbol (in config format) for subscription
+		if subscribeErr := s.manager.Subscribe(exchange, strings.ToLower(symbol)); subscribeErr == nil {
+			// Wait a moment for data to arrive (only for Binance which supports dynamic subscription)
+			if exchange == "binance" {
+				time.Sleep(2 * time.Second)
+				
+				// Try to get the data again
+				data, err = s.storage.Get(ctx, exchange, storageSymbol)
+				if err == nil {
+					// Success! Continue to return the data
+					goto returnData
 				}
 			}
-			
-			// Different error messages based on exchange capabilities
-			if exchange == "binance" {
-				http.Error(w, "Ticker not found. Try again in a few seconds if this is a valid symbol.", http.StatusNotFound)
-			} else {
-				http.Error(w, fmt.Sprintf("Symbol not available on %s. This exchange requires pre-configuration of symbols.", exchange), http.StatusNotFound)
-			}
+		}
+		
+		// Different error messages based on exchange capabilities
+		if exchange == "binance" {
+			http.Error(w, "Ticker not found. Try again in a few seconds if this is a valid symbol.", http.StatusNotFound)
 		} else {
-			logrus.WithFields(logrus.Fields{
+			http.Error(w, fmt.Sprintf("Symbol not available on %s. This exchange requires pre-configuration of symbols.", exchange), http.StatusNotFound)
+		}
+		logrus.WithFields(logrus.Fields{
 				"exchange": exchange,
 				"symbol":   symbol,
 				"error":    err,
 				"app":      "ticker-service-v2",
-			}).Error("Failed to get ticker from Redis")
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
+			}).Error("Failed to get ticker from storage")
 		return
 	}
 	
 returnData:
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(data))
+	w.Write(data)
 }
 
 // handleMetrics handles Prometheus metrics requests

@@ -6,14 +6,15 @@ High-performance WebSocket ticker service for cryptocurrency exchanges written i
 
 - Concurrent WebSocket connections to multiple exchanges
 - Automatic reconnection with exponential backoff
-- Redis pub/sub for data distribution
+- **Optional Redis support** - Works with Redis or in-memory storage
 - Structured JSON logging for Google Cloud
 - Low-latency ticker updates
 - Health checks and monitoring endpoints
+- Dynamic subscription support (all exchanges)
 
 ## Architecture
 
-The service uses Go's goroutines to manage concurrent WebSocket connections to different exchanges. Each exchange handler runs in its own goroutine and publishes ticker updates to Redis channels.
+The service uses Go's goroutines to manage concurrent WebSocket connections to different exchanges. Each exchange handler runs in its own goroutine and stores ticker data in either Redis or in-memory storage.
 
 ## Supported Exchanges
 
@@ -41,28 +42,46 @@ go build -o ticker-service cmd/ticker/main.go
 
 ## Configuration
 
-Configuration can be provided via environment variables or config file:
+Configuration is done via YAML config files:
+
+### Storage Options
+
+**Option 1: In-Memory Storage (No Redis Required)**
+
+```yaml
+redis:
+  addr: "" # Leave empty for in-memory storage
+```
+
+**Option 2: Redis Storage**
+
+```yaml
+redis:
+  addr: localhost:6379 # Set Redis address
+  password: ""
+  db: 0
+```
+
+### Full Configuration Example
 
 ```yaml
 server:
   port: 8080
 
 redis:
-  addr: localhost:6379
-  password: ""
-  db: 0
+  addr: "" # Set to "localhost:6379" for Redis, or "" for in-memory
 
 exchanges:
   binance:
     enabled: true
     symbols:
-      - BTC/USDT
-      - ETH/USDT
+      - btc-usdt
+      - eth-usdt
   okx:
     enabled: true
     symbols:
-      - BTC-USDT
-      - ETH-USDT
+      - btc-usdt
+      - eth-usdt
 
 logging:
   level: info
@@ -89,14 +108,17 @@ logging:
 The ticker API uses a standardized format: `{base}-{quote}`
 
 Examples:
+
 - `btc-usdt` - Bitcoin against USDT
 - `eth-usdt` - Ethereum against USDT
 - `bnb-usdt` - Binance Coin against USDT
 
 Currently supported quote currencies:
+
 - `usdt` - Tether USD
 
 Future support planned for:
+
 - `usdc` - USD Coin
 - `busd` - Binance USD
 

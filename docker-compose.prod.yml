@@ -1,15 +1,15 @@
-version: "3.3"
+version: '3.3'
 
 services:
   app:
-    image: ticker-service-v2-dev
-    container_name: ticker-service-v2-dev
+    image: ticker-service-v2
+    container_name: ticker-service-v2
     restart: unless-stopped
-
+    
     # Graceful shutdown configuration - give the app 30s to complete shutdown
     stop_grace_period: 30s
     stop_signal: SIGTERM
-
+    
     # Configure ulimit to support many WebSocket connections
     ulimits:
       nofile:
@@ -18,13 +18,13 @@ services:
       nproc:
         soft: 65536
         hard: 65536
-
-    # Resource limits
+    
+    # Production environment resource limits
     deploy:
       resources:
         limits:
-          memory: 2G
-
+          memory: 4G
+    
     # System configuration optimization
     sysctls:
       - net.core.somaxconn=65535
@@ -32,15 +32,15 @@ services:
       - net.ipv4.tcp_fin_timeout=30
       - net.ipv4.tcp_keepalive_time=1200
       - net.ipv4.tcp_max_tw_buckets=180000
-
+    
     # Mount config file
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-
-    # Use development config
+      - ./config.production.yaml:/app/config.production.yaml:ro
+    
+    # Use production config
     environment:
-      - CONFIG_FILE=config.yaml
-
+      - CONFIG_FILE=config.production.yaml
+    
     # Port mapping
     ports:
       - "8080:8080"

@@ -1,38 +1,48 @@
+# syntax=docker/dockerfile:1.2
+
 # Build stage
 FROM golang:1.21-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache git make
-
-# Set working directory
-WORKDIR /app
+RUN apk add --no-cache git
+WORKDIR /build
 
 # Copy go mod files
 COPY go.mod go.sum ./
 
-# Download dependencies
-RUN go mod download
+# Download dependencies with cache mount
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ticker-service cmd/ticker/main.go
+# Build the binary with cache mount
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-w -s" -o ticker-service cmd/ticker/main.go
 
 # Final stage
 FROM alpine:latest
+RUN apk --no-cache add ca-certificates curl
+WORKDIR /app
 
-# Install ca-certificates for HTTPS
-RUN apk --no-cache add ca-certificates
+# Copy binary from builder
+COPY --from=builder /build/ticker-service .
 
-WORKDIR /root/
+# Copy configuration files
+COPY config.yaml .
+COPY config.production.yaml .
 
-# Copy the binary from builder
-COPY --from=builder /app/ticker-service .
-COPY --from=builder /app/config.yaml .
+# Configure system limits for file descriptors
+# This is needed to support many WebSocket connections
+RUN echo "* soft nofile 65536" >> /etc/security/limits.conf && \
+    echo "* hard nofile 65536" >> /etc/security/limits.conf && \
+    echo "root soft nofile 65536" >> /etc/security/limits.conf && \
+    echo "root hard nofile 65536" >> /etc/security/limits.conf
 
-# Expose port
+# Set production config by default (can be overridden)
+ENV CONFIG_FILE=config.production.yaml
+
 EXPOSE 8080
 
-# Run the binary
-CMD ["./ticker-service", "-config", "config.yaml"]
+CMD ["sh", "-c", "./ticker-service -config ${CONFIG_FILE:-config.yaml}"]
