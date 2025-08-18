@@ -15,11 +15,11 @@ func TestNewBinanceHandler(t *testing.T) {
 		description    string
 	}{
 		{
-			name: "symbols with @ticker suffix",
+			name: "standard dash format",
 			configSymbols: []string{
-				"btcusdt@ticker",
-				"ethusdt@ticker",
-				"bnbusdt@ticker",
+				"btc-usdt",
+				"eth-usdt",
+				"bnb-usdt",
 			},
 			wantSubscribed: map[string]bool{
 				"BTCUSDT": true,
@@ -27,31 +27,31 @@ func TestNewBinanceHandler(t *testing.T) {
 				"BNBUSDT": true,
 			},
 			description: `
-				Tests that the handler correctly strips @ticker suffix from config symbols.
-				This is important for backward compatibility with old config format.
+				Tests standard config format with dash separator.
+				This is the expected format for all config symbols.
 			`,
 		},
 		{
-			name: "symbols without suffix",
+			name: "special 1000x tokens",
 			configSymbols: []string{
-				"BTCUSDT",
-				"ETHUSDT",
+				"btc-usdt",
+				"1000shib-usdt",
 			},
 			wantSubscribed: map[string]bool{
 				"BTCUSDT": true,
-				"ETHUSDT": true,
+				"1000SHIBUSDT": true,
 			},
 			description: `
-				Tests that plain symbols (without @ticker) are correctly uppercased.
-				This supports the simplified configuration format.
+				Tests that 1000x tokens are correctly handled.
+				Binance uses 1000SHIB for small-value tokens.
 			`,
 		},
 		{
-			name: "mixed case symbols",
+			name: "mixed case handled",
 			configSymbols: []string{
-				"btcusdt",
-				"EthUsdt",
-				"BNBusdt@ticker",
+				"BTC-USDT",
+				"Eth-Usdt",
+				"bnb-usdt",
 			},
 			wantSubscribed: map[string]bool{
 				"BTCUSDT": true,
@@ -59,8 +59,8 @@ func TestNewBinanceHandler(t *testing.T) {
 				"BNBUSDT": true,
 			},
 			description: `
-				Verifies case-insensitive handling of symbols.
-				Users might provide symbols in various cases, all should be normalized to uppercase.
+				Verifies case-insensitive handling of config symbols.
+				All should be normalized to uppercase WebSocket format.
 			`,
 		},
 	}
@@ -93,7 +93,7 @@ func TestNewBinanceHandler(t *testing.T) {
 // This is unique to Binance which supports the !miniTicker@arr stream
 func TestBinanceSubscribeUnsubscribe(t *testing.T) {
 	handler := NewBinanceHandler(config.ExchangeConfig{
-		Symbols: []string{"btcusdt@ticker"},
+		Symbols: []string{"btc-usdt"},
 	})
 	
 	// Initial state - only BTCUSDT should be subscribed
@@ -137,34 +137,48 @@ func TestNormalizeBinanceSymbol(t *testing.T) {
 	}{
 		{
 			input:    "BTCUSDT",
-			expected: "BTC/USDT",
+			expected: "btc-usdt",
 			description: "Standard USDT pair normalization",
 		},
 		{
 			input:    "ETHUSDT",
-			expected: "ETH/USDT",
+			expected: "eth-usdt",
 			description: "ETH pair normalization",
 		},
 		{
 			input:    "BTCBUSD",
-			expected: "BTCBUSD", // Doesn't end with USDT, no change
+			expected: "btcbusd", // Doesn't end with USDT, no change
 			description: "Non-USDT pairs are left unchanged",
 		},
 		{
 			input:    "BNB",
-			expected: "BNB",
+			expected: "bnb",
 			description: "Short symbols without quote currency are unchanged",
 		},
 		{
 			input:    "SOLUSDT",
-			expected: "SOL/USDT",
+			expected: "sol-usdt",
 			description: "3-letter base currency normalization",
 		},
+		{
+			input:    "1000SHIBUSDT",
+			expected: "1000shib-usdt",
+			description: "1000SHIB special format preserved",
+		},
+		{
+			input:    "1000PEPEUSDT",
+			expected: "1000pepe-usdt",
+			description: "1000PEPE special format preserved",
+		},
+	}
+	
+	handler := &BinanceHandler{
+		symbolConverter: NewSymbolConverter(),
 	}
 	
 	for _, tc := range testCases {
 		t.Run(tc.input, func(t *testing.T) {
-			result := normalizeBinanceSymbol(tc.input)
+			result := handler.normalizeBinanceSymbol(tc.input)
 			if result != tc.expected {
 				t.Errorf("normalizeBinanceSymbol(%s) = %s, want %s",
 					tc.input, result, tc.expected)
@@ -174,8 +188,8 @@ func TestNormalizeBinanceSymbol(t *testing.T) {
 	
 	t.Log(`
 		This test ensures correct symbol format conversion:
-		- Binance format: BTCUSDT (no separator)
-		- Internal format: BTC/USDT (with slash separator)
+		- Binance format: BTCUSDT (no separator, uppercase)
+		- Storage format: btc-usdt (dash separator, lowercase)
 		- This normalization is critical for Redis key consistency
 	`)
 }

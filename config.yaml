@@ -10,7 +10,7 @@ logging:
   level: debug
   format: json
   production: false  # Set to true to only show errors/warnings
-  ticker_updates: true  # Set to false to disable verbose ticker update logs
+  ticker_updates: false  # Set to false to disable verbose ticker update logs
 
 # Use the ACTUAL symbol names for each exchange
 # Binance uses 1000SHIB, 1000PEPE for small-value tokens

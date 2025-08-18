@@ -293,14 +293,71 @@ func (h *OKXHandler) keepAlive() {
 	}
 }
 
-// Subscribe adds a new symbol (not implemented for OKX - requires reconnection)
+// Subscribe adds a new symbol by reconnecting with updated symbol list
 func (h *OKXHandler) Subscribe(symbol string) {
-	logger.WithSymbol("okx", symbol).Warn("Dynamic subscription not supported - requires reconnection")
+	h.mu.Lock()
+	
+	// Check if already subscribed
+	for _, s := range h.config.Symbols {
+		if s == symbol {
+			h.mu.Unlock()
+			logger.WithSymbol("okx", symbol).Info("Already subscribed to symbol")
+			return
+		}
+	}
+	
+	// Add to symbol list
+	h.config.Symbols = append(h.config.Symbols, symbol)
+	h.mu.Unlock()
+	
+	logger.WithSymbol("okx", symbol).Info("Adding symbol - reconnecting WebSocket")
+	
+	// Reconnect with new symbol list
+	h.reconnect()
 }
 
-// Unsubscribe removes a symbol (not implemented for OKX - requires reconnection)
+// Unsubscribe removes a symbol by reconnecting with updated symbol list
 func (h *OKXHandler) Unsubscribe(symbol string) {
-	logger.WithSymbol("okx", symbol).Warn("Dynamic unsubscription not supported - requires reconnection")
+	h.mu.Lock()
+	
+	// Find and remove symbol
+	newSymbols := make([]string, 0, len(h.config.Symbols))
+	found := false
+	for _, s := range h.config.Symbols {
+		if s != symbol {
+			newSymbols = append(newSymbols, s)
+		} else {
+			found = true
+		}
+	}
+	
+	if !found {
+		h.mu.Unlock()
+		logger.WithSymbol("okx", symbol).Warn("Symbol not in subscription list")
+		return
+	}
+	
+	h.config.Symbols = newSymbols
+	h.mu.Unlock()
+	
+	logger.WithSymbol("okx", symbol).Info("Removing symbol - reconnecting WebSocket")
+	
+	// Reconnect with updated symbol list
+	h.reconnect()
+}
+
+// reconnect closes current connection and establishes a new one
+func (h *OKXHandler) reconnect() {
+	// Close existing connection
+	h.Close()
+	
+	// Wait a moment before reconnecting
+	time.Sleep(500 * time.Millisecond)
+	
+	// Reconnect
+	if err := h.Connect(); err != nil {
+		logger.WithExchange("okx").Errorf("Failed to reconnect: %v", err)
+	}
 }
 
 // GetSubscribedSymbols returns list of subscribed symbols
