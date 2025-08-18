@@ -114,7 +114,8 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 	storageSymbol := strings.ToLower(symbol)
 
 	// Get latest ticker from storage
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	// Use longer timeout to allow for auto-subscription
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
 	data, err := s.storage.Get(ctx, exchange, storageSymbol)
@@ -122,32 +123,45 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 		// Try to auto-subscribe to the symbol
 		// Input symbol is already in config format (btc-usdt)
 		// Use the original symbol (in config format) for subscription
+		logrus.WithFields(logrus.Fields{
+			"exchange": exchange,
+			"symbol":   symbol,
+			"app":      "ticker-service-v2",
+		}).Info("Symbol not found in storage, attempting auto-subscription")
+		
 		if subscribeErr := s.manager.Subscribe(exchange, strings.ToLower(symbol)); subscribeErr == nil {
-			// Wait a moment for data to arrive (only for Binance which supports dynamic subscription)
-			if exchange == "binance" {
-				time.Sleep(2 * time.Second)
+			// Wait for data to arrive (all exchanges support dynamic subscription)
+			// Try multiple times with short delays
+			for i := 0; i < 5; i++ {
+				time.Sleep(500 * time.Millisecond)
 				
 				// Try to get the data again
 				data, err = s.storage.Get(ctx, exchange, storageSymbol)
 				if err == nil {
 					// Success! Continue to return the data
+					logrus.WithFields(logrus.Fields{
+						"exchange": exchange,
+						"symbol":   symbol,
+						"attempt":  i + 1,
+						"app":      "ticker-service-v2",
+					}).Info("Auto-subscription successful, data received")
 					goto returnData
 				}
 			}
+			
+			// If still no data after waiting, return appropriate message
+			http.Error(w, fmt.Sprintf("Subscribed to %s on %s. Please try again in a few seconds for data to arrive.", symbol, exchange), http.StatusAccepted)
+			return
 		}
 		
-		// Different error messages based on exchange capabilities
-		if exchange == "binance" {
-			http.Error(w, "Ticker not found. Try again in a few seconds if this is a valid symbol.", http.StatusNotFound)
-		} else {
-			http.Error(w, fmt.Sprintf("Symbol not available on %s. This exchange requires pre-configuration of symbols.", exchange), http.StatusNotFound)
-		}
+		// Subscription failed - symbol might not be valid
+		http.Error(w, fmt.Sprintf("Failed to subscribe to %s on %s. Symbol may not be valid or available.", symbol, exchange), http.StatusNotFound)
 		logrus.WithFields(logrus.Fields{
 				"exchange": exchange,
 				"symbol":   symbol,
 				"error":    err,
 				"app":      "ticker-service-v2",
-			}).Error("Failed to get ticker from storage")
+			}).Error("Failed to get ticker from storage and auto-subscription failed")
 		return
 	}
 	
