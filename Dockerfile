@@ -33,13 +33,6 @@ COPY --from=builder /build/ticker-service .
 COPY config.yaml .
 COPY config.production.yaml .
 
-# Configure system limits for file descriptors
-# This is needed to support many WebSocket connections
-RUN echo "* soft nofile 65536" >> /etc/security/limits.conf && \
-    echo "* hard nofile 65536" >> /etc/security/limits.conf && \
-    echo "root soft nofile 65536" >> /etc/security/limits.conf && \
-    echo "root hard nofile 65536" >> /etc/security/limits.conf
-
 # Set production config by default (can be overridden)
 ENV CONFIG_FILE=config.production.yaml
 
