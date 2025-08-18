@@ -10,7 +10,7 @@ redis:
 logging:
   level: debug
   format: json
-  production: false  # Set to true to only show errors/warnings
+  production: true  # Set to true to only show errors/warnings
   ticker_updates: false  # Set to false to disable verbose ticker update logs
 
 # Use the ACTUAL symbol names for each exchange
