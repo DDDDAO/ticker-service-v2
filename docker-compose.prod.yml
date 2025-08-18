@@ -44,3 +44,12 @@ services:
     # Port mapping
     ports:
       - "8091:8080"
+    
+    # Network configuration - use shared network for service communication
+    networks:
+      - dddd-network
+
+# Define shared network for inter-service communication
+networks:
+  dddd-network:
+    external: true
