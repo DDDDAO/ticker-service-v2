@@ -15,6 +15,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy source code
 COPY . .
 
+# Generate protobuf code
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest && \
+    apk add --no-cache protobuf && \
+    protoc --go_out=. --go_opt=paths=source_relative \
+           --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+           proto/ticker.proto || true
+
 # Build the binary with cache mount
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
@@ -36,6 +44,7 @@ COPY config.production.yaml .
 # Set production config by default (can be overridden)
 ENV CONFIG_FILE=config.production.yaml
 
-EXPOSE 8080
+# Expose both HTTP and gRPC ports
+EXPOSE 8080 50051
 
 CMD ["sh", "-c", "./ticker-service -config ${CONFIG_FILE:-config.yaml}"]

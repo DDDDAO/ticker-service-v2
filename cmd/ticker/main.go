@@ -11,6 +11,7 @@ import (
 
 	"github.com/ddddao/ticker-service-v2/internal/config"
 	"github.com/ddddao/ticker-service-v2/internal/exchanges"
+	grpcserver "github.com/ddddao/ticker-service-v2/internal/grpc"
 	"github.com/ddddao/ticker-service-v2/internal/logger"
 	"github.com/ddddao/ticker-service-v2/internal/server"
 	"github.com/ddddao/ticker-service-v2/internal/storage"
@@ -85,6 +86,13 @@ func main() {
 			logrus.Fatalf("HTTP server error: %v", err)
 		}
 	}()
+
+	// Start gRPC server on port 50051
+	grpcPort := 50051
+	grpcSrv := grpcserver.NewServer(grpcPort, manager, stor)
+	if err := grpcSrv.Start(); err != nil {
+		logrus.Fatalf("Failed to start gRPC server: %v", err)
+	}
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)

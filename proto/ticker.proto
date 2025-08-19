@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package ticker;
+
+option go_package = "github.com/ddddao/ticker-service-v2/proto";
+
+service TickerService {
+  // Get single ticker
+  rpc GetTicker(GetTickerRequest) returns (TickerData);
+  
+  // Get multiple tickers in batch
+  rpc GetBatchTickers(BatchTickerRequest) returns (BatchTickerResponse);
+  
+  // Stream tickers in real-time
+  rpc StreamTickers(StreamTickerRequest) returns (stream TickerData);
+  
+  // Health check
+  rpc HealthCheck(Empty) returns (HealthResponse);
+}
+
+message Empty {}
+
+message GetTickerRequest {
+  string exchange = 1;
+  string symbol = 2;
+}
+
+message BatchTickerRequest {
+  repeated GetTickerRequest requests = 1;
+}
+
+message BatchTickerResponse {
+  map<string, TickerData> tickers = 1; // key: "exchange:symbol"
+}
+
+message StreamTickerRequest {
+  repeated GetTickerRequest subscriptions = 1;
+}
+
+message TickerData {
+  string symbol = 1;
+  double last = 2;
+  double bid = 3;
+  double ask = 4;
+  double high = 5;
+  double low = 6;
+  double volume = 7;
+  string timestamp = 8;
+  string exchange = 9;
+}
+
+message HealthResponse {
+  string status = 1;
+  bool storage_ok = 2;
+  string storage_type = 3;
+  string timestamp = 4;
+}

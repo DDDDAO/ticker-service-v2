@@ -135,12 +135,26 @@ k8s-delete: ## Delete from Kubernetes
 	@echo "${YELLOW}Deleting from Kubernetes...${NC}"
 	kubectl delete -f k8s/
 
+.PHONY: proto
+proto: ## Generate protobuf code
+	@echo "${YELLOW}Generating protobuf code...${NC}"
+	@if ! which protoc > /dev/null; then \
+		echo "${RED}protoc not installed. Please install protobuf compiler${NC}"; \
+		exit 1; \
+	fi
+	protoc --go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		proto/ticker.proto
+	@echo "${GREEN}Protobuf code generated successfully${NC}"
+
 .PHONY: install-tools
 install-tools: ## Install development tools
 	@echo "${YELLOW}Installing development tools...${NC}"
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	go install golang.org/x/tools/cmd/goimports@latest
 	go install github.com/cosmtrek/air@latest
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 	@echo "${GREEN}Tools installed successfully${NC}"
 
 .PHONY: health

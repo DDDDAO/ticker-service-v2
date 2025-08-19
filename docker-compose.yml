@@ -41,9 +41,10 @@ services:
     environment:
       - CONFIG_FILE=config.yaml
 
-    # Port mapping
+    # Port mapping - HTTP and gRPC
     ports:
-      - "8091:8080"
+      - "8091:8080"  # HTTP API
+      - "50051:50051"  # gRPC API
 
     # Network configuration - use shared network for service communication
     networks:
