@@ -22,6 +22,7 @@ type GateHandler struct {
 	callback       func(*TickerData)
 	status         ExchangeStatus
 	mu             sync.RWMutex
+	writeMu        sync.Mutex // Mutex for WebSocket writes
 	messageCount   int64
 	errorCount     int64
 	reconnectCount int64
@@ -122,7 +123,11 @@ func (h *GateHandler) subscribe() error {
 			return fmt.Errorf("connection is nil")
 		}
 
-		if err := conn.WriteJSON(subscribeMsg); err != nil {
+		// Protect WebSocket write with mutex
+		h.writeMu.Lock()
+		err := conn.WriteJSON(subscribeMsg)
+		h.writeMu.Unlock()
+		if err != nil {
 			return err
 		}
 	}
@@ -308,7 +313,11 @@ func (h *GateHandler) keepAlive() {
 			"id":      atomic.AddInt64(&h.requestID, 1),
 			"channel": "futures.ping",
 		}
-		if err := conn.WriteJSON(pingMsg); err != nil {
+		// Protect WebSocket write with mutex
+		h.writeMu.Lock()
+		err := conn.WriteJSON(pingMsg)
+		h.writeMu.Unlock()
+		if err != nil {
 			logger.WithExchange("gate").Errorf("Failed to send ping: %v", err)
 			return
 		}

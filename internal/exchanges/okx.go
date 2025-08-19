@@ -21,6 +21,7 @@ type OKXHandler struct {
 	callback       func(*TickerData)
 	status         ExchangeStatus
 	mu             sync.RWMutex
+	writeMu        sync.Mutex // Mutex for WebSocket writes
 	messageCount   int64
 	errorCount     int64
 	reconnectCount int64
@@ -120,6 +121,9 @@ func (h *OKXHandler) subscribe() error {
 		return fmt.Errorf("connection is nil")
 	}
 
+	// Protect WebSocket write with mutex
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
 	return conn.WriteJSON(subscribeMsg)
 }
 
@@ -286,7 +290,11 @@ func (h *OKXHandler) keepAlive() {
 
 		// Send ping message (OKX format)
 		pingMsg := map[string]string{"op": "ping"}
-		if err := conn.WriteJSON(pingMsg); err != nil {
+		// Protect WebSocket write with mutex
+		h.writeMu.Lock()
+		err := conn.WriteJSON(pingMsg)
+		h.writeMu.Unlock()
+		if err != nil {
 			logger.WithExchange("okx").Errorf("Failed to send ping: %v", err)
 			return
 		}

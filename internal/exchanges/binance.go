@@ -20,6 +20,7 @@ type BinanceHandler struct {
 	callback       func(*TickerData)
 	status         ExchangeStatus
 	mu             sync.RWMutex
+	writeMu        sync.Mutex // Mutex for WebSocket writes
 	messageCount   int64
 	errorCount     int64
 	reconnectCount int64
@@ -358,7 +359,11 @@ func (h *BinanceHandler) keepAlive() {
 			return
 		}
 
-		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+		// Protect WebSocket write with mutex
+		h.writeMu.Lock()
+		err := conn.WriteMessage(websocket.PingMessage, nil)
+		h.writeMu.Unlock()
+		if err != nil {
 			logger.WithExchange("binance").Errorf("Failed to send ping: %v", err)
 			return
 		}

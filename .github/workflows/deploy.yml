@@ -40,7 +40,7 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_PEM }}
           port: ${{ secrets.SERVER_PORT }}
-          source: "docker-compose.yml,docker-compose.prod.yml,config.yaml,config.production.yaml"
+          source: "docker-compose.yml,docker-compose.prod.yml,config.yaml,config.production.yaml,proto/"
           target: /home/${{ secrets.SERVER_USERNAME }}/deploy/${{ env.APP_NAME }}
 
   deploy:

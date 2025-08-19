@@ -21,6 +21,7 @@ type BybitHandler struct {
 	callback       func(*TickerData)
 	status         ExchangeStatus
 	mu             sync.RWMutex
+	writeMu        sync.Mutex // Mutex for WebSocket writes
 	messageCount   int64
 	errorCount     int64
 	reconnectCount int64
@@ -137,6 +138,9 @@ func (h *BybitHandler) subscribe() error {
 		return fmt.Errorf("connection is nil")
 	}
 
+	// Protect WebSocket write with mutex
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
 	return conn.WriteJSON(subscribeMsg)
 }
 
@@ -341,7 +345,11 @@ func (h *BybitHandler) keepAlive() {
 			"op":       "ping",
 			"req_id":   fmt.Sprintf("%d", time.Now().Unix()),
 		}
-		if err := conn.WriteJSON(pingMsg); err != nil {
+		// Protect WebSocket write with mutex
+		h.writeMu.Lock()
+		err := conn.WriteJSON(pingMsg)
+		h.writeMu.Unlock()
+		if err != nil {
 			logger.WithExchange("bybit").Errorf("Failed to send ping: %v", err)
 			return
 		}
