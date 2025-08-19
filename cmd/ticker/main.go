@@ -113,6 +113,9 @@ func main() {
 		logrus.Errorf("HTTP server shutdown error: %v", err)
 	}
 
+	// Stop gRPC server
+	grpcSrv.Stop()
+
 	// Wait for all goroutines to finish
 	manager.Wait()
 

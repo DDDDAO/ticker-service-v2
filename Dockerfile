@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1.2
 
-# Build stage
-FROM golang:1.21-alpine AS builder
-RUN apk add --no-cache git
+# Build stage - Use Go 1.22 for compatibility with latest protobuf
+FROM golang:1.22-alpine AS builder
+RUN apk add --no-cache git protobuf
 WORKDIR /build
+
+# Install protoc plugins first
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.32.0 && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -15,13 +19,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy source code
 COPY . .
 
-# Generate protobuf code
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest && \
-    apk add --no-cache protobuf && \
-    protoc --go_out=. --go_opt=paths=source_relative \
-           --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-           proto/ticker.proto || true
+# Generate protobuf code if proto directory exists
+RUN if [ -d "proto" ]; then \
+        protoc --go_out=. --go_opt=paths=source_relative \
+               --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+               proto/*.proto; \
+    fi
 
 # Build the binary with cache mount
 RUN --mount=type=cache,target=/go/pkg/mod \

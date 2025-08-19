@@ -6,12 +6,7 @@ set -e
 
 echo "🚀 Deploying ticker-service-v2 with gRPC support..."
 
-# Build the service
-echo "📦 Building ticker-service..."
-make proto || echo "Proto generation skipped (may need protoc installed)"
-make build
-
-# Build Docker image
+# Build Docker image (includes proto generation)
 echo "🐳 Building Docker image..."
 docker build -t ticker-service-v2:latest .
 
@@ -38,3 +33,7 @@ echo "  - HTTP API: http://localhost:8091"
 echo "  - gRPC API: localhost:50051"
 echo ""
 echo "To view logs: docker-compose -f docker-compose.prod.yml logs -f"
+echo ""
+echo "Test commands:"
+echo "  HTTP: curl http://localhost:8091/api/ticker/binance/btc-usdt | jq ."
+echo "  gRPC: grpcurl -plaintext localhost:50051 ticker.TickerService/HealthCheck"

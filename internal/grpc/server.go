@@ -106,7 +106,7 @@ func (s *Server) GetTicker(ctx context.Context, req *pb.GetTickerRequest) (*pb.T
 		High:      tickerData.High,
 		Low:       tickerData.Low,
 		Volume:    tickerData.Volume,
-		Timestamp: tickerData.Timestamp,
+		Timestamp: tickerData.Timestamp.Format(time.RFC3339),
 		Exchange:  req.Exchange,
 	}, nil
 }
@@ -187,7 +187,7 @@ func (s *Server) StreamTickers(req *pb.StreamTickerRequest, stream pb.TickerServ
 					High:      tickerData.High,
 					Low:       tickerData.Low,
 					Volume:    tickerData.Volume,
-					Timestamp: tickerData.Timestamp,
+					Timestamp: tickerData.Timestamp.Format(time.RFC3339),
 					Exchange:  sub.Exchange,
 				}); err != nil {
 					return err
