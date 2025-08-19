@@ -90,23 +90,33 @@ func (s *Server) GetTicker(ctx context.Context, req *pb.GetTickerRequest) (*pb.T
 	data, err := s.storage.Get(ctx, req.Exchange, req.Symbol)
 	if err != nil {
 		// Try to auto-subscribe and wait for data
+		logrus.WithFields(logrus.Fields{
+			"exchange": req.Exchange,
+			"symbol":   req.Symbol,
+		}).Debug("Symbol not found, attempting auto-subscription")
+		
 		if subscribeErr := s.manager.Subscribe(req.Exchange, req.Symbol); subscribeErr == nil {
-			// Wait for data to arrive
-			for i := 0; i < 20; i++ {
-				time.Sleep(500 * time.Millisecond)
+			// Wait for data to arrive, check more frequently
+			for i := 0; i < 50; i++ {
+				time.Sleep(100 * time.Millisecond) // Check every 100ms instead of 500ms
 				
 				data, err = s.storage.Get(ctx, req.Exchange, req.Symbol)
 				if err == nil {
 					// Got data, break out of loop and continue to parse it
+					logrus.WithFields(logrus.Fields{
+						"exchange": req.Exchange,
+						"symbol":   req.Symbol,
+						"waitTime": fmt.Sprintf("%dms", (i+1)*100),
+					}).Debug("Auto-subscription successful, data received")
 					break
 				}
 			}
 			
 			if err != nil {
-				return nil, status.Errorf(codes.DeadlineExceeded, "ticker not found after 10s wait")
+				return nil, status.Errorf(codes.DeadlineExceeded, "ticker not found after 5s wait")
 			}
 		} else {
-			return nil, status.Errorf(codes.NotFound, "ticker not found and subscription failed")
+			return nil, status.Errorf(codes.NotFound, "ticker not found and subscription failed: %v", subscribeErr)
 		}
 	}
 
