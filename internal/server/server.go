@@ -115,14 +115,12 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 
 	// Get latest ticker from storage
 	// Use longer timeout to allow for auto-subscription
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	data, err := s.storage.Get(ctx, exchange, storageSymbol)
 	if err != nil {
 		// Try to auto-subscribe to the symbol
-		// Input symbol is already in config format (btc-usdt)
-		// Use the original symbol (in config format) for subscription
 		logrus.WithFields(logrus.Fields{
 			"exchange": exchange,
 			"symbol":   symbol,
@@ -130,42 +128,42 @@ func (s *Server) handleTicker(w http.ResponseWriter, r *http.Request) {
 		}).Info("Symbol not found in storage, attempting auto-subscription")
 		
 		if subscribeErr := s.manager.Subscribe(exchange, strings.ToLower(symbol)); subscribeErr == nil {
-			// Wait for data to arrive (all exchanges support dynamic subscription)
-			// Try multiple times with short delays
-			for i := 0; i < 5; i++ {
+			// Wait for data to arrive with longer timeout
+			// Try multiple times with delays
+			for i := 0; i < 20; i++ {
 				time.Sleep(500 * time.Millisecond)
 				
 				// Try to get the data again
 				data, err = s.storage.Get(ctx, exchange, storageSymbol)
 				if err == nil {
-					// Success! Continue to return the data
+					// Success! Return the data
 					logrus.WithFields(logrus.Fields{
 						"exchange": exchange,
 						"symbol":   symbol,
 						"attempt":  i + 1,
 						"app":      "ticker-service-v2",
 					}).Info("Auto-subscription successful, data received")
-					goto returnData
+					w.Header().Set("Content-Type", "application/json")
+					w.Write(data)
+					return
 				}
 			}
 			
-			// If still no data after waiting, return appropriate message
-			http.Error(w, fmt.Sprintf("Subscribed to %s on %s. Please try again in a few seconds for data to arrive.", symbol, exchange), http.StatusAccepted)
+			// If still no data after waiting, return error
+			http.Error(w, fmt.Sprintf("Subscribed to %s on %s but no data received after 10 seconds.", symbol, exchange), http.StatusGatewayTimeout)
 			return
 		}
 		
 		// Subscription failed - symbol might not be valid
 		http.Error(w, fmt.Sprintf("Failed to subscribe to %s on %s. Symbol may not be valid or available.", symbol, exchange), http.StatusNotFound)
 		logrus.WithFields(logrus.Fields{
-				"exchange": exchange,
-				"symbol":   symbol,
-				"error":    err,
-				"app":      "ticker-service-v2",
-			}).Error("Failed to get ticker from storage and auto-subscription failed")
+			"exchange": exchange,
+			"symbol":   symbol,
+			"error":    err,
+			"app":      "ticker-service-v2",
+		}).Error("Failed to get ticker from storage and auto-subscription failed")
 		return
 	}
-	
-returnData:
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)

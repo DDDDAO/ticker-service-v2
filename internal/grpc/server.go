@@ -83,13 +83,31 @@ func (s *Server) GetTicker(ctx context.Context, req *pb.GetTickerRequest) (*pb.T
 		return nil, status.Error(codes.InvalidArgument, "exchange and symbol are required")
 	}
 
-	// Get from storage with short timeout for fast failure
-	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	// Get from storage with timeout
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	data, err := s.storage.Get(ctx, req.Exchange, req.Symbol)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "ticker not found: %v", err)
+		// Try to auto-subscribe and wait for data
+		if subscribeErr := s.manager.Subscribe(req.Exchange, req.Symbol); subscribeErr == nil {
+			// Wait for data to arrive
+			for i := 0; i < 20; i++ {
+				time.Sleep(500 * time.Millisecond)
+				
+				data, err = s.storage.Get(ctx, req.Exchange, req.Symbol)
+				if err == nil {
+					// Got data, break out of loop and continue to parse it
+					break
+				}
+			}
+			
+			if err != nil {
+				return nil, status.Errorf(codes.DeadlineExceeded, "ticker not found after 10s wait")
+			}
+		} else {
+			return nil, status.Errorf(codes.NotFound, "ticker not found and subscription failed")
+		}
 	}
 
 	// Parse the stored JSON data

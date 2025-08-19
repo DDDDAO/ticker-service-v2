@@ -29,8 +29,8 @@ func NewMemoryStorage() *MemoryStorage {
 
 	m := &MemoryStorage{
 		data:            make(map[string]map[string]*tickerEntry),
-		ttl:             10 * time.Second,
-		cleanupInterval: 5 * time.Second,
+		ttl:             5 * time.Minute,  // Keep data for 5 minutes (Binance sends updates every second)
+		cleanupInterval: 60 * time.Second, // Clean up every minute
 		stopCleanup:     make(chan bool),
 	}
 
@@ -72,11 +72,8 @@ func (m *MemoryStorage) Get(ctx context.Context, exchange, symbol string) ([]byt
 		return nil, fmt.Errorf("ticker data not found for %s:%s", exchange, symbol)
 	}
 
-	// Check if data is expired
-	if time.Since(entry.Timestamp) > m.ttl {
-		return nil, fmt.Errorf("ticker data expired for %s:%s", exchange, symbol)
-	}
-
+	// Return data even if stale - better than no data
+	// The cleanup goroutine will remove very old data
 	return entry.Data, nil
 }
 
