@@ -39,12 +39,12 @@ func main() {
 	if cfg.Redis.Addr != "" {
 		stor, err = storage.NewRedisStorage(cfg.Redis)
 		if err != nil {
-			logrus.Warnf("Failed to connect to Redis (%v), falling back to in-memory storage", err)
-			stor = storage.NewMemoryStorage()
+			logrus.Warnf("Failed to connect to Redis (%v), falling back to optimized in-memory storage", err)
+			stor = storage.NewMemoryStorageOptimized()
 		}
 	} else {
-		logrus.Info("Redis not configured, using in-memory storage")
-		stor = storage.NewMemoryStorage()
+		logrus.Info("Redis not configured, using optimized in-memory storage")
+		stor = storage.NewMemoryStorageOptimized()
 	}
 	defer stor.Close()
 
@@ -53,7 +53,7 @@ func main() {
 	defer cancel()
 
 	// Initialize exchange manager
-	manager := exchanges.NewManager(stor)
+	manager := exchanges.NewManager(stor, cfg)
 
 	// Start enabled exchanges
 	for name, exchCfg := range cfg.Exchanges {

@@ -1,5 +1,9 @@
 server:
   port: 8080
+  # Latency warning thresholds (in milliseconds)
+  # Increase these if your Redis is in a different region/network
+  processing_latency_warn_ms: 50  # Default: 50ms
+  store_latency_warn_ms: 20       # Default: 20ms (increase to 200 for remote Redis)
 
 redis:
   # Leave addr empty to use in-memory storage instead of Redis

@@ -68,7 +68,15 @@ func (h *OKXHandler) Connect() error {
 	log := logger.WithExchange("okx")
 	log.Infof("Connecting to %s", h.config.WSURL)
 
-	conn, _, err := websocket.DefaultDialer.Dial(h.config.WSURL, nil)
+	// Create custom dialer with compression disabled to avoid RSV bit issues
+	dialer := websocket.Dialer{
+		HandshakeTimeout:  30 * time.Second,
+		ReadBufferSize:    8192,
+		WriteBufferSize:   8192,
+		EnableCompression: false, // Disable to fix "RSV1 set, RSV2 set, RSV3 set, bad opcode 11" errors
+	}
+	
+	conn, _, err := dialer.Dial(h.config.WSURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}

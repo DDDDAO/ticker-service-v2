@@ -15,7 +15,9 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port int `mapstructure:"port"`
+	Port                      int   `mapstructure:"port"`
+	ProcessingLatencyWarnMs   int64 `mapstructure:"processing_latency_warn_ms"`
+	StoreLatencyWarnMs        int64 `mapstructure:"store_latency_warn_ms"`
 }
 
 type RedisConfig struct {
@@ -44,6 +46,8 @@ func Load(configPath string) (*Config, error) {
 
 	// Set defaults
 	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.processing_latency_warn_ms", 50)
+	v.SetDefault("server.store_latency_warn_ms", 20)
 	v.SetDefault("redis.addr", "localhost:6379")
 	v.SetDefault("redis.db", 0)
 	v.SetDefault("logging.level", "info")

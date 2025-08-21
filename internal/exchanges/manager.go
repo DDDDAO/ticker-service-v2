@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ddddao/ticker-service-v2/internal/config"
 	"github.com/ddddao/ticker-service-v2/internal/logger"
 	"github.com/ddddao/ticker-service-v2/internal/storage"
 	"github.com/sirupsen/logrus"
@@ -13,17 +14,33 @@ import (
 
 // Manager manages all exchange WebSocket connections
 type Manager struct {
-	exchanges map[string]Handler
-	storage   storage.Storage
-	mu        sync.RWMutex
-	wg        sync.WaitGroup
+	exchanges               map[string]Handler
+	storage                 storage.Storage
+	processingLatencyWarnMs int64
+	storeLatencyWarnMs      int64
+	mu                      sync.RWMutex
+	wg                      sync.WaitGroup
 }
 
 // NewManager creates a new exchange manager
-func NewManager(storage storage.Storage) *Manager {
+func NewManager(storage storage.Storage, cfg *config.Config) *Manager {
+	processingWarn := int64(50) // default
+	storeWarn := int64(20)      // default
+	
+	if cfg != nil {
+		if cfg.Server.ProcessingLatencyWarnMs > 0 {
+			processingWarn = cfg.Server.ProcessingLatencyWarnMs
+		}
+		if cfg.Server.StoreLatencyWarnMs > 0 {
+			storeWarn = cfg.Server.StoreLatencyWarnMs
+		}
+	}
+	
 	return &Manager{
-		exchanges: make(map[string]Handler),
-		storage:   storage,
+		exchanges:               make(map[string]Handler),
+		storage:                 storage,
+		processingLatencyWarnMs: processingWarn,
+		storeLatencyWarnMs:      storeWarn,
 	}
 }
 
@@ -121,8 +138,8 @@ func (m *Manager) publishTicker(exchange string, data *TickerData) {
 	storeLatency := time.Since(storeStart).Milliseconds()
 
 	// Log performance metrics at warn level only for actual high latency
-	// Processing latency < 50ms is expected since we use receive time
-	if processingLatency > 50 || storeLatency > 20 {
+	// Use configurable thresholds
+	if processingLatency > m.processingLatencyWarnMs || storeLatency > m.storeLatencyWarnMs {
 		logrus.WithFields(logrus.Fields{
 			"exchange":              exchange,
 			"symbol":                data.Symbol,
