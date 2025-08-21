@@ -39,9 +39,15 @@ echo ""
 echo "3. Sample Ticker Data:"
 echo "----------------------"
 EXCHANGES=("binance" "okx" "bybit" "bitget" "gate")
-SYMBOL="btc-usdt"
 
 for EXCHANGE in "${EXCHANGES[@]}"; do
+    # Gate uses underscore format (btc_usdt), others use dash (btc-usdt)
+    if [ "$EXCHANGE" = "gate" ]; then
+        SYMBOL="btc_usdt"
+    else
+        SYMBOL="btc-usdt"
+    fi
+    
     echo -n "$EXCHANGE/$SYMBOL: "
     TICKER=$(curl -s "$SERVER/api/ticker/$EXCHANGE/$SYMBOL" 2>/dev/null)
     if [ -n "$TICKER" ] && [ "$TICKER" != "null" ]; then
