@@ -75,11 +75,11 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           script: |
             # Move scripts to final location, overwriting if necessary
-            cp -rf /home/${{ secrets.SERVER_USERNAME }}/scripts_temp/scripts/* /home/${{ secrets.SERVER_USERNAME }}/scripts/ 2>/dev/null || true
-            mkdir -p /home/${{ secrets.SERVER_USERNAME }}/scripts
-            mv -f /home/${{ secrets.SERVER_USERNAME }}/scripts_temp/scripts/* /home/${{ secrets.SERVER_USERNAME }}/scripts/ 2>/dev/null || true
-            rm -rf /home/${{ secrets.SERVER_USERNAME }}/scripts_temp
-            chmod +x /home/${{ secrets.SERVER_USERNAME }}/scripts/*.sh
+            sudo mkdir -p /home/${{ secrets.SERVER_USERNAME }}/scripts
+            sudo cp -rf /home/${{ secrets.SERVER_USERNAME }}/scripts_temp/scripts/* /home/${{ secrets.SERVER_USERNAME }}/scripts/ 2>/dev/null || true
+            sudo rm -rf /home/${{ secrets.SERVER_USERNAME }}/scripts_temp
+            sudo chmod +x /home/${{ secrets.SERVER_USERNAME }}/scripts/*.sh
+            sudo chown ${{ secrets.SERVER_USERNAME }}:${{ secrets.SERVER_USERNAME }} /home/${{ secrets.SERVER_USERNAME }}/scripts/*.sh
 
   deploy:
     needs: build
