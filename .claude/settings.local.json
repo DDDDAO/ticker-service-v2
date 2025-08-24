@@ -9,7 +9,9 @@
       "Bash(./ticker-service:*)",
       "Bash(lsof:*)",
       "Bash(grep:*)",
-      "Bash(./scripts/performance-test.sh:*)"
+      "Bash(./scripts/performance-test.sh:*)",
+      "Bash(git log:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
