@@ -3,7 +3,7 @@
 # Ticker Service Monitoring Script
 # Usage: ./scripts/monitor.sh [server_url]
 
-SERVER=${1:-"http://localhost:8080"}
+SERVER=${1:-"http://localhost:8091"}
 
 echo "================================"
 echo "Ticker Service Status Monitor"

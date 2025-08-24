@@ -113,7 +113,7 @@ echo ""
 # Test 6: Service-specific metrics
 echo "6. Ticker Service Metrics:"
 echo "--------------------------"
-SERVER_URL="${1:-http://localhost:8080}"
+SERVER_URL="${1:-http://localhost:8091}"
 if curl -s "$SERVER_URL/health" > /dev/null 2>&1; then
     echo "Service is running at $SERVER_URL"
     
