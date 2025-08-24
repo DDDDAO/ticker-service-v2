@@ -13,7 +13,7 @@ func NewHandler(name string, cfg config.ExchangeConfig) (Handler, error) {
 	case "binance":
 		return NewBinanceHandler(cfg), nil
 	case "okx":
-		return NewOKXHandler(cfg), nil
+		return NewOKXHandlerFixed(cfg), nil
 	case "bybit":
 		return NewBybitHandler(cfg), nil
 	case "bitget":
